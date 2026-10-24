@@ -1,0 +1,20 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.config import get_settings
+
+settings = get_settings()
+app = FastAPI(title=settings.app_name, version="0.1.0", docs_url=None, redoc_url=None)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Content-Type", "X-CSRF-Token"],
+)
+
+
+@app.get("/api/v1/health", tags=["operations"])
+def health() -> dict[str, str]:
+    """Liveness endpoint intentionally excludes configuration secrets."""
+    return {"status": "ok", "service": settings.app_name, "environment": settings.environment}
