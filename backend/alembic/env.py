@@ -1,7 +1,10 @@
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
-# Migration metadata is introduced with the first data model in phase 2.
-target_metadata = None
+from app.database import Base
+import app.models  # noqa: F401
+
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
@@ -11,7 +14,11 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    raise RuntimeError("No migrations exist yet; phase 2 introduces the initial schema.")
+    connectable = engine_from_config(context.config.get_section(context.config.config_ini_section), prefix="sqlalchemy.", poolclass=pool.NullPool)
+    with connectable.connect() as connection:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
 
 
 if context.is_offline_mode():
