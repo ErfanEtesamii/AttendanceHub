@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Cookie, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -6,10 +8,10 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.database import get_session
 from app.attendance import ip_matches_cidr, location_is_allowed
-from app.models import AttendancePolicy, AuditLog, Company, Membership, User
+from app.models import AttendancePolicy, AuditLog, Company, Invitation, Membership, User
 from app.permissions import has_permission
-from app.schemas import AttendancePolicyTestInput, CompanyCreateInput
-from app.security import decode_access_token
+from app.schemas import AttendancePolicyTestInput, CompanyCreateInput, InvitationCreateInput
+from app.security import decode_access_token, new_refresh_token, token_digest
 
 router = APIRouter(prefix="/api/v1/companies", tags=["companies"])
 
@@ -62,3 +64,19 @@ def list_audit(slug: str, user: User = Depends(current_user), session: Session =
     company = require_company_permission(slug, user, session, "audit.read")
     entries = session.scalars(select(AuditLog).where(AuditLog.company_id == company.id).order_by(AuditLog.created_at.desc()).limit(100)).all()
     return [{"action": entry.action, "created_at": entry.created_at.isoformat()} for entry in entries]
+
+
+@router.get("/{slug}/members")
+def list_members(slug: str, user: User = Depends(current_user), session: Session = Depends(get_session)) -> list[dict[str, str]]:
+    company = require_company_permission(slug, user, session, "company.read")
+    rows = session.execute(select(User, Membership.role).join(Membership).where(Membership.company_id == company.id)).all()
+    return [{"email": member.email, "name": member.name, "role": role} for member, role in rows]
+
+
+@router.post("/{slug}/invitations", status_code=status.HTTP_201_CREATED)
+def create_invitation(slug: str, payload: InvitationCreateInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str]:
+    company = require_company_permission(slug, user, session, "members.manage")
+    token = new_refresh_token()
+    session.add(Invitation(company_id=company.id, email=str(payload.email).lower(), role=payload.role, token_hash=token_digest(token), expires_at=datetime.now(timezone.utc) + timedelta(days=7)))
+    session.add(AuditLog(company_id=company.id, actor_id=user.id, action="invitation.created")); session.commit()
+    return {"status": "created"}

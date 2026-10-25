@@ -37,3 +37,8 @@ class AttendancePolicyTestInput(BaseModel):
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     accuracy_meters: float | None = Field(default=None, ge=0)
+
+
+class InvitationCreateInput(BaseModel):
+    email: EmailStr
+    role: str = Field(pattern="^(admin|manager|hr|employee)$")
