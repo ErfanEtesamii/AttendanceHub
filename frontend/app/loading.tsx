@@ -1,0 +1,1 @@
+export default function Loading() { return <main className="mx-auto max-w-6xl animate-pulse p-8"><div className="h-8 w-32 rounded bg-slate-200" /><div className="mt-14 h-14 max-w-xl rounded bg-slate-200" /><div className="mt-5 h-6 max-w-lg rounded bg-slate-200" /></main>; }
