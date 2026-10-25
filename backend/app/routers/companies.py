@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.database import get_session
+from app.attendance import ip_matches_cidr, location_is_allowed
 from app.models import AttendancePolicy, Company, Membership, User
-from app.schemas import CompanyCreateInput
+from app.schemas import AttendancePolicyTestInput, CompanyCreateInput
 from app.security import decode_access_token
 
 router = APIRouter(prefix="/api/v1/companies", tags=["companies"])
@@ -34,3 +35,17 @@ def create_company(payload: CompanyCreateInput, user: User = Depends(current_use
     try: session.commit()
     except IntegrityError: session.rollback(); raise HTTPException(status_code=400, detail="Unable to create company")
     return {"name": company.name, "slug": company.slug, "role": "owner"}
+
+
+@router.post("/{slug}/attendance-policy/test")
+def test_attendance_policy(slug: str, payload: AttendancePolicyTestInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, bool | str]:
+    company = session.scalar(select(Company).where(Company.slug == slug))
+    if company is None or session.scalar(select(Membership).where(Membership.company_id == company.id, Membership.user_id == user.id)) is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    policy = session.get(AttendancePolicy, company.id)
+    if policy is None: raise HTTPException(status_code=404, detail="Policy not found")
+    if policy.mode == "ip":
+        allowed = bool(payload.ip and policy.allowed_cidr and ip_matches_cidr(payload.ip, policy.allowed_cidr))
+    else:
+        allowed = bool(payload.latitude is not None and payload.longitude is not None and payload.accuracy_meters is not None and policy.latitude and policy.longitude and policy.radius_meters and location_is_allowed(payload.latitude, payload.longitude, payload.accuracy_meters, float(policy.latitude), float(policy.longitude), policy.radius_meters))
+    return {"mode": policy.mode, "allowed": allowed}

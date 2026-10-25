@@ -30,3 +30,10 @@ class CompanyCreateInput(BaseModel):
     latitude: str | None = None
     longitude: str | None = None
     radius_meters: int | None = Field(default=None, ge=10, le=100000)
+
+
+class AttendancePolicyTestInput(BaseModel):
+    ip: str | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    accuracy_meters: float | None = Field(default=None, ge=0)
