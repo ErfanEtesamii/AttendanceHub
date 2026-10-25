@@ -1,0 +1,1 @@
+export default function TermsPage() { return <main className="mx-auto max-w-3xl p-10"><h1 className="text-3xl font-bold">شرایط استفاده</h1><p className="mt-5 leading-8">استفاده از سرویس باید مطابق قوانین سازمان و حقوق کارکنان انجام شود. متن حقوقی کامل پیش از انتشار عمومی ارائه می‌شود.</p></main>; }

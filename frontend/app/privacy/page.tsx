@@ -1,0 +1,1 @@
+export default function PrivacyPage() { return <main className="mx-auto max-w-3xl p-10"><h1 className="text-3xl font-bold">حریم خصوصی</h1><p className="mt-5 leading-8">فقط داده‌های لازم برای ارائهٔ سرویس پردازش می‌شوند. داده‌های شرکت‌ها از یکدیگر جدا می‌مانند.</p></main>; }

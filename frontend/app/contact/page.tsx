@@ -1,0 +1,1 @@
+export default function ContactPage() { return <main className="mx-auto max-w-3xl p-10"><h1 className="text-3xl font-bold">تماس</h1><p className="mt-5">راه ارتباطی پشتیبانی در نسخهٔ عملیاتی این صفحه اعلام خواهد شد.</p></main>; }
