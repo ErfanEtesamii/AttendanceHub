@@ -1,0 +1,11 @@
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+
+type Member = { email: string; name: string; role: string };
+export default function MembersPage({ params }: { params: Promise<{ slug: string }> }) {
+  const [members, setMembers] = useState<Member[]>([]); const [message, setMessage] = useState("");
+  useEffect(() => { params.then(({ slug }) => fetch(`/api/v1/companies/${slug}/members`).then((r) => r.ok ? r.json() : []).then(setMembers)); }, [params]);
+  async function invite(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const slug = (await params).slug; const data = new FormData(event.currentTarget); const result = await fetch(`/api/v1/companies/${slug}/invitations`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: data.get("email"), role: data.get("role") }) }); setMessage(result.ok ? "دعوت‌نامه ایجاد شد." : "ایجاد دعوت‌نامه ناموفق بود."); }
+  return <main className="mx-auto max-w-3xl p-8"><h1 className="text-2xl font-bold">اعضای شرکت</h1><form onSubmit={invite} className="mt-6 flex flex-wrap gap-3 rounded border p-4"><input required name="email" type="email" placeholder="name@example.com" className="rounded border p-2" /><select name="role" className="rounded border p-2"><option value="employee">کارمند</option><option value="manager">مدیر</option><option value="hr">منابع انسانی</option><option value="admin">ادمین</option></select><button className="rounded bg-[var(--primary)] px-4 py-2 text-white">دعوت</button></form>{message && <p className="mt-3" aria-live="polite">{message}</p>}<div className="mt-6 overflow-x-auto rounded border"><table className="w-full text-right"><thead><tr className="border-b"><th className="p-3">نام</th><th>ایمیل</th><th>نقش</th></tr></thead><tbody>{members.map((member) => <tr className="border-b" key={member.email}><td className="p-3">{member.name}</td><td dir="ltr">{member.email}</td><td>{member.role}</td></tr>)}</tbody></table></div></main>;
+}
