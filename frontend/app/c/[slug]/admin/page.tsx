@@ -1,0 +1,1 @@
+export default async function CompanyAdminPage({ params }: { params: Promise<{ slug: string }> }) { const { slug } = await params; return <main className="p-8"><h1 className="text-2xl font-bold">پنل مدیریت شرکت</h1><p className="mt-3">شرکت: {slug}</p><p className="mt-5">تنظیمات شرکت، اعضا و سیاست حضور در این بخش تکمیل خواهند شد.</p></main>; }

@@ -8,6 +8,7 @@ All notable changes to this project are documented in this file.
 - Authentication foundation: cookie-only sessions, Argon2id passwords, refresh-token rotation, OTP provider abstraction, password reset path, rate limiting, migrations, and initial auth UI.
 - Public landing page and initial about, contact, terms, and privacy pages.
 - Public SEO routes and global loading, error, and not-found states.
+- Initial company onboarding wizard, multi-tenant company models, memberships, and attendance-policy API.
 
 ## [0.1.0] - 2026-10-24
 

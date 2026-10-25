@@ -20,3 +20,13 @@ class OtpRequestInput(BaseModel):
 class OtpVerifyInput(OtpRequestInput):
     code: str = Field(pattern="^\\d{6}$")
     new_password: str | None = Field(default=None, min_length=12, max_length=128)
+
+
+class CompanyCreateInput(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    slug: str = Field(pattern="^[a-z0-9-]{3,80}$")
+    mode: str = Field(pattern="^(ip|location)$")
+    allowed_cidr: str | None = Field(default=None, max_length=64)
+    latitude: str | None = None
+    longitude: str | None = None
+    radius_meters: int | None = Field(default=None, ge=10, le=100000)

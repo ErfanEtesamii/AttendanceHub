@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -39,3 +39,31 @@ class OtpChallenge(Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Company(Base):
+    __tablename__ = "companies"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(160))
+    slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    timezone: Mapped[str] = mapped_column(String(64), default="Asia/Tehran")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Membership(Base):
+    __tablename__ = "memberships"
+    __table_args__ = (UniqueConstraint("company_id", "user_id", name="uq_membership_company_user"),)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(20), default="employee")
+
+
+class AttendancePolicy(Base):
+    __tablename__ = "attendance_policies"
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True)
+    mode: Mapped[str] = mapped_column(String(16))
+    allowed_cidr: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    latitude: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    longitude: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    radius_meters: Mapped[int | None] = mapped_column(Integer, nullable=True)

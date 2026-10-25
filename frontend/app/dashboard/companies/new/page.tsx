@@ -1,0 +1,16 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+
+export default function NewCompanyPage() {
+  const [step, setStep] = useState(1); const [mode, setMode] = useState<"ip" | "location">("ip"); const [message, setMessage] = useState(""); const router = useRouter();
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const data = new FormData(event.currentTarget);
+    const body = { name: data.get("name"), slug: data.get("slug"), mode, allowed_cidr: mode === "ip" ? data.get("allowed_cidr") : null, latitude: mode === "location" ? data.get("latitude") : null, longitude: mode === "location" ? data.get("longitude") : null, radius_meters: mode === "location" ? Number(data.get("radius_meters")) : null };
+    const response = await fetch("/api/v1/companies", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!response.ok) { setMessage("ثبت شرکت انجام نشد. اطلاعات را بررسی کنید."); return; }
+    const company = await response.json(); router.push(`/c/${company.slug}/admin`);
+  }
+  return <main className="mx-auto max-w-2xl p-8"><p className="text-sm text-[var(--primary)]">مرحله {step} از ۳</p><h1 className="mt-2 text-3xl font-bold">ثبت شرکت</h1><form onSubmit={submit} className="mt-7 rounded-2xl border p-6"><div className={step === 1 ? "" : "hidden"}><label className="block">نام شرکت<input required name="name" className="mt-2 w-full rounded border p-2" /></label><label className="mt-4 block">شناسهٔ URL<input required name="slug" pattern="[a-z0-9-]{3,80}" dir="ltr" className="mt-2 w-full rounded border p-2" /></label></div><div className={step === 2 ? "" : "hidden"}><p className="font-semibold">روش حضور</p><label className="mt-4 flex gap-2"><input type="radio" checked={mode === "ip"} onChange={() => setMode("ip")} /> IP سازمان</label><label className="mt-3 flex gap-2"><input type="radio" checked={mode === "location"} onChange={() => setMode("location")} /> موقعیت جغرافیایی</label>{mode === "ip" ? <label className="mt-4 block">CIDR مجاز<input name="allowed_cidr" placeholder="192.168.10.0/24" className="mt-2 w-full rounded border p-2" /></label> : <div className="mt-4 grid gap-3 sm:grid-cols-3"><input required name="latitude" placeholder="Latitude" className="rounded border p-2" /><input required name="longitude" placeholder="Longitude" className="rounded border p-2" /><input required name="radius_meters" type="number" min="10" placeholder="Radius (m)" className="rounded border p-2" /></div>}</div>{step === 3 && <p>پس از ثبت، شما مالک شرکت خواهید بود و به پنل مدیریت هدایت می‌شوید.</p>}<div className="mt-7 flex justify-between"><button type="button" disabled={step === 1} onClick={() => setStep(step - 1)} className="rounded border px-4 py-2 disabled:opacity-40">قبلی</button>{step < 3 ? <button type="button" onClick={() => setStep(step + 1)} className="rounded bg-[var(--primary)] px-4 py-2 text-white">بعدی</button> : <button className="rounded bg-[var(--primary)] px-4 py-2 text-white">ثبت شرکت</button>}</div>{message && <p className="mt-4" aria-live="polite">{message}</p>}</form></main>;
+}
