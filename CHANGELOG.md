@@ -9,6 +9,7 @@ All notable changes to this project are documented in this file.
 - Public landing page and initial about, contact, terms, and privacy pages.
 - Public SEO routes and global loading, error, and not-found states.
 - Initial company onboarding wizard, multi-tenant company models, memberships, and attendance-policy API.
+- CIDR/IP and location-radius attendance policy primitives with boundary tests.
 
 ## [0.1.0] - 2026-10-24
 
