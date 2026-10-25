@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.database import get_session
 from app.attendance import ip_matches_cidr, location_is_allowed
-from app.models import AttendancePolicy, Company, Membership, User
+from app.models import AttendancePolicy, AuditLog, Company, Membership, User
+from app.permissions import has_permission
 from app.schemas import AttendancePolicyTestInput, CompanyCreateInput
 from app.security import decode_access_token
 
@@ -17,6 +18,13 @@ def current_user(ah_access: str | None = Cookie(default=None), session: Session 
     user = session.get(User, claims.get("sub")) if claims else None
     if user is None or claims.get("ver") != user.token_version: raise HTTPException(status_code=401, detail="Invalid session")
     return user
+
+
+def require_company_permission(slug: str, user: User, session: Session, permission: str) -> Company:
+    company = session.scalar(select(Company).where(Company.slug == slug))
+    membership = session.scalar(select(Membership).where(Membership.company_id == company.id, Membership.user_id == user.id)) if company else None
+    if company is None or membership is None or not has_permission(membership.role, permission): raise HTTPException(status_code=404, detail="Company not found")
+    return company
 
 @router.get("")
 def list_companies(user: User = Depends(current_user), session: Session = Depends(get_session)) -> list[dict[str, str]]:
@@ -39,9 +47,7 @@ def create_company(payload: CompanyCreateInput, user: User = Depends(current_use
 
 @router.post("/{slug}/attendance-policy/test")
 def test_attendance_policy(slug: str, payload: AttendancePolicyTestInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, bool | str]:
-    company = session.scalar(select(Company).where(Company.slug == slug))
-    if company is None or session.scalar(select(Membership).where(Membership.company_id == company.id, Membership.user_id == user.id)) is None:
-        raise HTTPException(status_code=404, detail="Company not found")
+    company = require_company_permission(slug, user, session, "policy.manage")
     policy = session.get(AttendancePolicy, company.id)
     if policy is None: raise HTTPException(status_code=404, detail="Policy not found")
     if policy.mode == "ip":
@@ -49,3 +55,10 @@ def test_attendance_policy(slug: str, payload: AttendancePolicyTestInput, user: 
     else:
         allowed = bool(payload.latitude is not None and payload.longitude is not None and payload.accuracy_meters is not None and policy.latitude and policy.longitude and policy.radius_meters and location_is_allowed(payload.latitude, payload.longitude, payload.accuracy_meters, float(policy.latitude), float(policy.longitude), policy.radius_meters))
     return {"mode": policy.mode, "allowed": allowed}
+
+
+@router.get("/{slug}/audit")
+def list_audit(slug: str, user: User = Depends(current_user), session: Session = Depends(get_session)) -> list[dict[str, str]]:
+    company = require_company_permission(slug, user, session, "audit.read")
+    entries = session.scalars(select(AuditLog).where(AuditLog.company_id == company.id).order_by(AuditLog.created_at.desc()).limit(100)).all()
+    return [{"action": entry.action, "created_at": entry.created_at.isoformat()} for entry in entries]

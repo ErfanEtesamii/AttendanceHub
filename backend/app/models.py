@@ -67,3 +67,12 @@ class AttendancePolicy(Base):
     latitude: Mapped[str | None] = mapped_column(String(32), nullable=True)
     longitude: Mapped[str | None] = mapped_column(String(32), nullable=True)
     radius_meters: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    action: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
