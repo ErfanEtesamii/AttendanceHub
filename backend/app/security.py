@@ -28,6 +28,13 @@ def issue_access_token(subject: str, token_version: int, settings: Settings) -> 
     return jwt.encode({"sub": subject, "ver": token_version, "iat": now, "exp": now + timedelta(minutes=15)}, settings.jwt_secret, algorithm="HS256")
 
 
+def decode_access_token(token: str, settings: Settings) -> dict[str, object] | None:
+    try:
+        return jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        return None
+
+
 def new_refresh_token() -> str:
     return token_urlsafe(48)
 

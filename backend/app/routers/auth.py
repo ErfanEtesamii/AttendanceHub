@@ -8,7 +8,7 @@ from app.config import Settings, get_settings
 from app.database import get_session
 from app.models import OtpChallenge, RefreshToken, User
 from app.schemas import LoginInput, OtpRequestInput, OtpVerifyInput, RegisterInput
-from app.security import hash_password, issue_access_token, new_otp, new_refresh_token, token_digest, verify_password
+from app.security import decode_access_token, hash_password, issue_access_token, new_otp, new_refresh_token, token_digest, verify_password
 from app.rate_limit import SlidingWindowLimiter
 from app.otp import get_otp_sender
 
@@ -58,10 +58,22 @@ def login(payload: LoginInput, response: Response, request: Request, session: Se
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(response: Response) -> Response:
+def logout(response: Response, ah_refresh: str | None = Cookie(default=None), session: Session = Depends(get_session)) -> Response:
+    if ah_refresh:
+        stored = session.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_digest(ah_refresh), RefreshToken.revoked_at.is_(None)))
+        if stored is not None: stored.revoked_at = datetime.now(timezone.utc); session.commit()
     response.delete_cookie("ah_access", path="/")
     response.delete_cookie("ah_refresh", path="/api/v1/auth")
     return response
+
+
+@router.get("/me")
+def me(ah_access: str | None = Cookie(default=None), session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
+    claims = decode_access_token(ah_access, settings) if ah_access else None
+    if not claims or not isinstance(claims.get("sub"), str): raise HTTPException(status_code=401, detail="Invalid session")
+    user = session.get(User, claims["sub"])
+    if user is None or claims.get("ver") != user.token_version: raise HTTPException(status_code=401, detail="Invalid session")
+    return {"id": str(user.id), "email": user.email, "name": user.name}
 
 
 @router.post("/refresh")

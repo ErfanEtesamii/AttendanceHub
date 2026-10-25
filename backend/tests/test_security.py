@@ -1,5 +1,5 @@
 from app.config import Settings
-from app.security import hash_password, issue_access_token, new_otp, new_refresh_token, token_digest, verify_password
+from app.security import decode_access_token, hash_password, issue_access_token, new_otp, new_refresh_token, token_digest, verify_password
 from app.otp import get_otp_sender
 
 
@@ -11,10 +11,12 @@ def test_password_is_argon2id_and_verifiable() -> None:
 
 
 def test_access_token_never_contains_password() -> None:
-    token = issue_access_token("user-id", 0, Settings(jwt_secret="a" * 32, encryption_key="b" * 32))
+    settings = Settings(jwt_secret="a" * 32, encryption_key="b" * 32)
+    token = issue_access_token("user-id", 0, settings)
     assert "password" not in token
     assert len(new_refresh_token()) >= 32
     assert token_digest("value") != "value"
+    assert decode_access_token(token, settings)["sub"] == "user-id"
 
 
 def test_otp_is_always_six_numeric_digits() -> None:
