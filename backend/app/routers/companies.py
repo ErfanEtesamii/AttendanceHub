@@ -11,7 +11,7 @@ from app.attendance import ip_matches_cidr, location_is_allowed
 from app.bots import encrypt_bot_token, has_decryptable_token, validate_dedicated_token
 from app.models import AttendancePolicy, AuditLog, BotConfiguration, Company, Invitation, Membership, User
 from app.permissions import has_permission
-from app.schemas import AttendancePolicyTestInput, BotConfigurationInput, CompanyCreateInput, InvitationCreateInput, MembershipRoleUpdateInput
+from app.schemas import AttendancePolicyTestInput, AttendancePolicyUpdateInput, BotConfigurationInput, CompanyCreateInput, InvitationCreateInput, MembershipRoleUpdateInput
 from app.security import decode_access_token, new_refresh_token, token_digest
 
 router = APIRouter(prefix="/api/v1/companies", tags=["companies"])
@@ -46,6 +46,41 @@ def create_company(payload: CompanyCreateInput, user: User = Depends(current_use
     try: session.commit()
     except IntegrityError: session.rollback(); raise HTTPException(status_code=400, detail="Unable to create company")
     return {"name": company.name, "slug": company.slug, "role": "owner"}
+
+
+def validate_attendance_policy(mode: str, allowed_cidr: str | None, latitude: float | str | None, longitude: float | str | None, radius_meters: int | None) -> None:
+    if mode == "ip":
+        if not allowed_cidr or not ip_matches_cidr("127.0.0.1", allowed_cidr) and not ip_matches_cidr("::1", allowed_cidr):
+            # `ip_network` validation without trusting a client IP.
+            from ipaddress import ip_network
+            try: ip_network(allowed_cidr or "", strict=False)
+            except ValueError: raise HTTPException(status_code=422, detail="A valid CIDR is required for IP mode")
+        return
+    if latitude is None or longitude is None or radius_meters is None:
+        raise HTTPException(status_code=422, detail="Location coordinates and radius are required")
+
+
+@router.get("/{slug}/attendance-policy")
+def get_attendance_policy(slug: str, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str | int | None]:
+    company = require_company_permission(slug, user, session, "company.read")
+    policy = session.get(AttendancePolicy, company.id)
+    if policy is None: raise HTTPException(status_code=404, detail="Policy not found")
+    return {"mode": policy.mode, "allowed_cidr": policy.allowed_cidr, "latitude": policy.latitude, "longitude": policy.longitude, "radius_meters": policy.radius_meters}
+
+
+@router.put("/{slug}/attendance-policy")
+def update_attendance_policy(slug: str, payload: AttendancePolicyUpdateInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str]:
+    company = require_company_permission(slug, user, session, "policy.manage")
+    validate_attendance_policy(payload.mode, payload.allowed_cidr, payload.latitude, payload.longitude, payload.radius_meters)
+    policy = session.get(AttendancePolicy, company.id)
+    if policy is None: raise HTTPException(status_code=404, detail="Policy not found")
+    policy.mode = payload.mode
+    policy.allowed_cidr = payload.allowed_cidr if payload.mode == "ip" else None
+    policy.latitude = str(payload.latitude) if payload.mode == "location" else None
+    policy.longitude = str(payload.longitude) if payload.mode == "location" else None
+    policy.radius_meters = payload.radius_meters if payload.mode == "location" else None
+    session.add(AuditLog(company_id=company.id, actor_id=user.id, action="attendance_policy.updated")); session.commit()
+    return {"status": "saved", "mode": policy.mode}
 
 
 @router.post("/{slug}/attendance-policy/test")

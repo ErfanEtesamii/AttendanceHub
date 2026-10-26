@@ -39,6 +39,14 @@ class AttendancePolicyTestInput(BaseModel):
     accuracy_meters: float | None = Field(default=None, ge=0)
 
 
+class AttendancePolicyUpdateInput(BaseModel):
+    mode: str = Field(pattern="^(ip|location)$")
+    allowed_cidr: str | None = Field(default=None, max_length=64)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    radius_meters: int | None = Field(default=None, ge=10, le=100000)
+
+
 class InvitationCreateInput(BaseModel):
     email: EmailStr
     role: str = Field(pattern="^(admin|manager|hr|employee)$")
