@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.database import get_session
 from app.attendance import ip_matches_cidr, location_is_allowed
-from app.models import AttendancePolicy, AuditLog, Company, Invitation, Membership, User
+from app.bots import encrypt_bot_token, has_decryptable_token, validate_dedicated_token
+from app.models import AttendancePolicy, AuditLog, BotConfiguration, Company, Invitation, Membership, User
 from app.permissions import has_permission
-from app.schemas import AttendancePolicyTestInput, CompanyCreateInput, InvitationCreateInput
+from app.schemas import AttendancePolicyTestInput, BotConfigurationInput, CompanyCreateInput, InvitationCreateInput
 from app.security import decode_access_token, new_refresh_token, token_digest
 
 router = APIRouter(prefix="/api/v1/companies", tags=["companies"])
@@ -80,3 +81,36 @@ def create_invitation(slug: str, payload: InvitationCreateInput, user: User = De
     session.add(Invitation(company_id=company.id, email=str(payload.email).lower(), role=payload.role, token_hash=token_digest(token), expires_at=datetime.now(timezone.utc) + timedelta(days=7)))
     session.add(AuditLog(company_id=company.id, actor_id=user.id, action="invitation.created")); session.commit()
     return {"status": "created"}
+
+
+@router.get("/{slug}/bot")
+def get_bot_configuration(slug: str, user: User = Depends(current_user), session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str | bool | None]:
+    company = require_company_permission(slug, user, session, "company.read")
+    configuration = session.get(BotConfiguration, company.id)
+    if configuration is None:
+        return {"mode": "shared", "username": settings.shared_bot_username, "dedicated_configured": False}
+    return {"mode": configuration.mode, "username": configuration.username, "dedicated_configured": has_decryptable_token(configuration.token_ciphertext, settings)}
+
+
+@router.get("/{slug}/bot/health")
+def bot_health(slug: str, user: User = Depends(current_user), session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
+    company = require_company_permission(slug, user, session, "company.read")
+    configuration = session.get(BotConfiguration, company.id)
+    if configuration is None or configuration.mode == "shared":
+        return {"status": "ready" if settings.shared_bot_username else "not_configured", "mode": "shared"}
+    return {"status": "ready" if has_decryptable_token(configuration.token_ciphertext, settings) else "not_configured", "mode": "dedicated"}
+
+
+@router.put("/{slug}/bot")
+def configure_bot(slug: str, payload: BotConfigurationInput, user: User = Depends(current_user), session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
+    company = require_company_permission(slug, user, session, "company.manage")
+    if payload.mode == "dedicated" and (not payload.dedicated_token or not validate_dedicated_token(payload.dedicated_token)):
+        raise HTTPException(status_code=422, detail="A valid dedicated bot token is required")
+    configuration = session.get(BotConfiguration, company.id) or BotConfiguration(company_id=company.id)
+    configuration.mode, configuration.username = payload.mode, payload.username
+    if payload.mode == "dedicated" and payload.dedicated_token:
+        configuration.token_ciphertext = encrypt_bot_token(payload.dedicated_token, settings)
+    elif payload.mode == "shared":
+        configuration.token_ciphertext = None
+    session.add(configuration); session.add(AuditLog(company_id=company.id, actor_id=user.id, action="bot.configured")); session.commit()
+    return {"mode": configuration.mode, "status": "saved"}

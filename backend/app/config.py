@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     encryption_key: str = Field(min_length=32)
     cors_origins: str = "http://localhost:3000"
     otp_provider: str = "console"
+    shared_bot_username: str | None = None
+    farazhonar_owner_email: str | None = None
 
     @field_validator("environment")
     @classmethod

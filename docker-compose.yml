@@ -23,6 +23,8 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-replace-with-a-random-encryption-key-of-at-least-32-characters}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       OTP_PROVIDER: ${OTP_PROVIDER:-console}
+      SHARED_BOT_USERNAME: ${SHARED_BOT_USERNAME:-}
+      FARAZHONAR_OWNER_EMAIL: ${FARAZHONAR_OWNER_EMAIL:-}
     depends_on:
       postgres:
         condition: service_healthy

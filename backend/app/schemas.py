@@ -42,3 +42,9 @@ class AttendancePolicyTestInput(BaseModel):
 class InvitationCreateInput(BaseModel):
     email: EmailStr
     role: str = Field(pattern="^(admin|manager|hr|employee)$")
+
+
+class BotConfigurationInput(BaseModel):
+    mode: str = Field(pattern="^(shared|dedicated)$")
+    username: str | None = Field(default=None, max_length=128)
+    dedicated_token: str | None = Field(default=None, min_length=20, max_length=256)

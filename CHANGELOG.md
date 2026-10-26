@@ -11,6 +11,8 @@ All notable changes to this project are documented in this file.
 - Initial company onboarding wizard, multi-tenant company models, memberships, and attendance-policy API.
 - CIDR/IP and location-radius attendance policy primitives with boundary tests.
 - Tenant-scoped attendance-policy test endpoint and initial administrator test screen.
+- Shared and dedicated bot configuration, with server-side encryption of dedicated tokens and redacted bot-health status.
+- Faraz Honar idempotent seed, platform-admin CLI/API, and an explicit mock attendance-engine adapter boundary.
 
 ## [0.1.0] - 2026-10-24
 
