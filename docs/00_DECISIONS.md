@@ -46,3 +46,7 @@ AttendHub یک درگاه مستقل، ابری و چندشرکتی برای و�
 
 - پیکربندی تولید fail-closed است و `/api/v1/health` برای orchestration آماده شده است.
 - کاتالوگ پیام‌های فارسی/انگلیسی و پایهٔ تم در فرانت‌اند آماده‌اند؛ صفحات محصول در فازهای بعدی ساخته می‌شوند.
+
+## یادداشت‌های سخت‌سازی
+
+- پاسخ‌های API با `X-Content-Type-Options`، `Referrer-Policy`، `X-Frame-Options`، `Permissions-Policy` و `Cache-Control: no-store` ارسال می‌شوند. CSP کامل و آزمون E2E مرورگر هنوز پیش از انتشار عمومی لازم‌اند.

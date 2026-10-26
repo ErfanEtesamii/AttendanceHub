@@ -14,6 +14,7 @@ All notable changes to this project are documented in this file.
 - Shared and dedicated bot configuration, with server-side encryption of dedicated tokens and redacted bot-health status.
 - Faraz Honar idempotent seed, platform-admin CLI/API, and an explicit mock attendance-engine adapter boundary.
 - Company member role management, audit-log view, and a dashboard that lists a signed-in user's companies.
+- Default security headers and no-store caching for backend API responses.
 
 ## [0.1.0] - 2026-10-24
 
