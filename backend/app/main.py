@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from app.config import get_settings
 from app.routers.auth import router as auth_router
@@ -8,6 +11,21 @@ from app.routers.platform import router as platform_router
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, version="0.1.0", docs_url=None, redoc_url=None)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "strict-origin")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if request.url.path.startswith("/api/"):
+            response.headers.setdefault("Cache-Control", "no-store")
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
