@@ -25,6 +25,7 @@ services:
       OTP_PROVIDER: ${OTP_PROVIDER:-console}
       SHARED_BOT_USERNAME: ${SHARED_BOT_USERNAME:-}
       FARAZHONAR_OWNER_EMAIL: ${FARAZHONAR_OWNER_EMAIL:-}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
     depends_on:
       postgres:
         condition: service_healthy

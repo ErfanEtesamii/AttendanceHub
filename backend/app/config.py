@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     otp_provider: str = "console"
     shared_bot_username: str | None = None
     farazhonar_owner_email: str | None = None
+    app_public_url: str = "http://localhost:3000"
 
     @field_validator("environment")
     @classmethod

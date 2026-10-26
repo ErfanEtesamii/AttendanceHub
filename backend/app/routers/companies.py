@@ -110,12 +110,28 @@ def list_members(slug: str, user: User = Depends(current_user), session: Session
 
 
 @router.post("/{slug}/invitations", status_code=status.HTTP_201_CREATED)
-def create_invitation(slug: str, payload: InvitationCreateInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str]:
+def create_invitation(slug: str, payload: InvitationCreateInput, user: User = Depends(current_user), session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
     company = require_company_permission(slug, user, session, "members.manage")
     token = new_refresh_token()
-    session.add(Invitation(company_id=company.id, email=str(payload.email).lower(), role=payload.role, token_hash=token_digest(token), expires_at=datetime.now(timezone.utc) + timedelta(days=7)))
+    invitation = Invitation(company_id=company.id, email=str(payload.email).lower(), role=payload.role, token_hash=token_digest(token), expires_at=datetime.now(timezone.utc) + timedelta(days=7))
+    session.add(invitation)
     session.add(AuditLog(company_id=company.id, actor_id=user.id, action="invitation.created")); session.commit()
+    # Delivery is intentionally isolated from the API response; do not expose tokens to callers.
+    if settings.environment == "development": print(f"Invitation URL: {settings.app_public_url}/dashboard/invitations?token={token}")
     return {"status": "created"}
+
+
+@router.post("/invitations/accept")
+def accept_invitation(token: str, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str]:
+    invitation = session.scalar(select(Invitation).where(Invitation.token_hash == token_digest(token), Invitation.accepted_at.is_(None)))
+    now = datetime.now(timezone.utc)
+    if invitation is None or invitation.expires_at < now or invitation.email != user.email:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    existing = session.scalar(select(Membership).where(Membership.company_id == invitation.company_id, Membership.user_id == user.id))
+    if existing is None: session.add(Membership(company_id=invitation.company_id, user_id=user.id, role=invitation.role))
+    invitation.accepted_at = now; session.add(AuditLog(company_id=invitation.company_id, actor_id=user.id, action="invitation.accepted")); session.commit()
+    company = session.get(Company, invitation.company_id)
+    return {"status": "accepted", "slug": company.slug}
 
 
 @router.patch("/{slug}/members/{member_email}")
