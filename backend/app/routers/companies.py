@@ -26,7 +26,7 @@ def current_user(ah_access: str | None = Cookie(default=None), session: Session 
 def require_company_permission(slug: str, user: User, session: Session, permission: str) -> Company:
     company = session.scalar(select(Company).where(Company.slug == slug))
     membership = session.scalar(select(Membership).where(Membership.company_id == company.id, Membership.user_id == user.id)) if company else None
-    if company is None or membership is None or not has_permission(membership.role, permission): raise HTTPException(status_code=404, detail="Company not found")
+    if company is None or company.status != "active" or membership is None or not has_permission(membership.role, permission): raise HTTPException(status_code=404, detail="Company not found")
     return company
 
 @router.get("")

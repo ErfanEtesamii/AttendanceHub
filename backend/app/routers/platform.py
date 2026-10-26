@@ -18,4 +18,13 @@ def platform_admin(user: User = Depends(current_user)) -> User:
 @router.get("/companies")
 def list_platform_companies(_: User = Depends(platform_admin), session: Session = Depends(get_session)) -> list[dict[str, str]]:
     companies = session.scalars(select(Company).order_by(Company.created_at.desc())).all()
-    return [{"name": company.name, "slug": company.slug, "timezone": company.timezone} for company in companies]
+    return [{"name": company.name, "slug": company.slug, "timezone": company.timezone, "status": company.status} for company in companies]
+
+
+@router.patch("/companies/{slug}/status")
+def update_company_status(slug: str, status: str, _: User = Depends(platform_admin), session: Session = Depends(get_session)) -> dict[str, str]:
+    if status not in {"active", "suspended"}: raise HTTPException(status_code=422, detail="Invalid status")
+    company = session.scalar(select(Company).where(Company.slug == slug))
+    if company is None: raise HTTPException(status_code=404, detail="Company not found")
+    company.status = status; session.commit()
+    return {"slug": company.slug, "status": company.status}
