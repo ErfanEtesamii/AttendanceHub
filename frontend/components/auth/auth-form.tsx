@@ -16,6 +16,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
       const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) });
       if (!response.ok) throw new Error();
       if (mode === "forgot") setMessage("اگر حسابی با این ایمیل وجود داشته باشد، کد ارسال می‌شود.");
+      else if (mode === "register") router.replace(`/verify?email=${encodeURIComponent(String(data.get("email")))}`);
       else {
         const callbackUrl = searchParams.get("callbackUrl");
         const target = callbackUrl && callbackUrl.startsWith("/") && !callbackUrl.startsWith("//") ? callbackUrl : "/dashboard";
