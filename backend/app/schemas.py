@@ -44,6 +44,10 @@ class InvitationCreateInput(BaseModel):
     role: str = Field(pattern="^(admin|manager|hr|employee)$")
 
 
+class MembershipRoleUpdateInput(BaseModel):
+    role: str = Field(pattern="^(admin|manager|hr|employee)$")
+
+
 class BotConfigurationInput(BaseModel):
     mode: str = Field(pattern="^(shared|dedicated)$")
     username: str | None = Field(default=None, max_length=128)

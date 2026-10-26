@@ -11,7 +11,7 @@ from app.attendance import ip_matches_cidr, location_is_allowed
 from app.bots import encrypt_bot_token, has_decryptable_token, validate_dedicated_token
 from app.models import AttendancePolicy, AuditLog, BotConfiguration, Company, Invitation, Membership, User
 from app.permissions import has_permission
-from app.schemas import AttendancePolicyTestInput, BotConfigurationInput, CompanyCreateInput, InvitationCreateInput
+from app.schemas import AttendancePolicyTestInput, BotConfigurationInput, CompanyCreateInput, InvitationCreateInput, MembershipRoleUpdateInput
 from app.security import decode_access_token, new_refresh_token, token_digest
 
 router = APIRouter(prefix="/api/v1/companies", tags=["companies"])
@@ -81,6 +81,18 @@ def create_invitation(slug: str, payload: InvitationCreateInput, user: User = De
     session.add(Invitation(company_id=company.id, email=str(payload.email).lower(), role=payload.role, token_hash=token_digest(token), expires_at=datetime.now(timezone.utc) + timedelta(days=7)))
     session.add(AuditLog(company_id=company.id, actor_id=user.id, action="invitation.created")); session.commit()
     return {"status": "created"}
+
+
+@router.patch("/{slug}/members/{member_email}")
+def update_member_role(slug: str, member_email: str, payload: MembershipRoleUpdateInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str]:
+    company = require_company_permission(slug, user, session, "members.manage")
+    member = session.scalar(select(User).where(User.email == member_email.lower()))
+    membership = session.scalar(select(Membership).where(Membership.company_id == company.id, Membership.user_id == member.id)) if member else None
+    if membership is None or membership.role == "owner":
+        raise HTTPException(status_code=404, detail="Member not found")
+    membership.role = payload.role
+    session.add(AuditLog(company_id=company.id, actor_id=user.id, action="member.role_updated")); session.commit()
+    return {"email": member.email, "role": membership.role}
 
 
 @router.get("/{slug}/bot")
