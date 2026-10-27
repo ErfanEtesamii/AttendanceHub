@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     shared_bot_username: str | None = None
     farazhonar_owner_email: str | None = None
     app_public_url: str = "http://localhost:3000"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
 
     @field_validator("environment")
     @classmethod
@@ -38,6 +43,8 @@ class Settings(BaseSettings):
                 raise ValueError(f"{name.upper()} must be a strong non-sample secret in production")
         if self.otp_provider == "console":
             raise ValueError("OTP_PROVIDER=console is not allowed in production")
+        if self.otp_provider == "smtp" and not all((self.smtp_host, self.smtp_username, self.smtp_password, self.smtp_from_email)):
+            raise ValueError("SMTP configuration is required when OTP_PROVIDER=smtp")
         return self
 
     @property

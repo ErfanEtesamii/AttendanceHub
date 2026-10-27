@@ -26,6 +26,11 @@ services:
       SHARED_BOT_USERNAME: ${SHARED_BOT_USERNAME:-}
       FARAZHONAR_OWNER_EMAIL: ${FARAZHONAR_OWNER_EMAIL:-}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
     depends_on:
       postgres:
         condition: service_healthy
