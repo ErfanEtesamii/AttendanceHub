@@ -15,6 +15,10 @@ app = FastAPI(title=settings.app_name, version="0.1.0", docs_url=None, redoc_url
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
+        if request.url.path.startswith("/api/") and request.method in {"POST", "PUT", "PATCH", "DELETE"} and (request.cookies.get("ah_access") or request.cookies.get("ah_refresh")):
+            origin = request.headers.get("origin")
+            if not origin or origin not in settings.cors_origin_list:
+                return Response(status_code=403, content="Cross-site request rejected")
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "strict-origin")
