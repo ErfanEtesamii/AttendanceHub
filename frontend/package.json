@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "next": "16.3.0",
@@ -18,6 +19,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.3.1",
+    "@playwright/test": "^1.55.0",
     "@tailwindcss/postcss": "4.1.13",
     "@types/node": "22.18.6",
     "@types/react": "19.2.8",
@@ -25,7 +27,7 @@
     "eslint": "9.35.0",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "4.1.13",
-    "typescript": "5.9.2"
-    ,"urlpattern-polyfill": "10.1.0"
+    "typescript": "5.9.2",
+    "urlpattern-polyfill": "10.1.0"
   }
 }

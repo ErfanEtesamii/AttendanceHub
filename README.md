@@ -23,3 +23,7 @@ See `README.fa.md` for Persian setup instructions and `docs/00_DECISIONS.md` for
 - Promote an existing account only with `python scripts/create_platform_admin.py owner@example.com`; public registration always creates a regular user.
 - The bot status endpoint intentionally reports only readiness, never a token. Dedicated bot tokens are encrypted server-side.
 - `docs/INTEGRATION.md` defines the boundary for a future attendance-engine adapter.
+
+## End-to-end verification
+
+Start Compose, obtain the development OTP for a dedicated test email, then run `E2E_EMAIL=... E2E_OTP=... npm run test:e2e` from `frontend/`. Install browser binaries once with `npx playwright install`.
