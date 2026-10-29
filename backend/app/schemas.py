@@ -33,6 +33,14 @@ class CompanyStatusInput(BaseModel):
     status: Literal["active", "pending_review", "suspended"]
 
 
+class CompanyUpdateInput(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    name_en: str | None = Field(default=None, max_length=160)
+    industry: str | None = Field(default=None, max_length=100)
+    city: str | None = Field(default=None, max_length=100)
+    phone: str | None = Field(default=None, max_length=32)
+
+
 class OtpRequestInput(BaseModel):
     email: EmailStr
     purpose: Literal["verify_email", "reset_password", "login_2fa"]

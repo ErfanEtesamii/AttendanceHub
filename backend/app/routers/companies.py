@@ -11,7 +11,7 @@ from app.database import get_session
 from app.attendance import ip_matches_cidr, location_is_allowed
 from app.bots import encrypt_bot_token, has_decryptable_token, validate_dedicated_token
 from app.models import AttendancePolicy, AuditLog, BotConfiguration, Company, Invitation, Membership, PolicyGeofence, PolicyIpRange, User
-from app.schemas import AttendancePolicyTestInput, AttendancePolicyUpdateInput, BotConfigurationInput, CompanyCreateInput, InvitationCreateInput, MembershipRoleUpdateInput
+from app.schemas import AttendancePolicyTestInput, AttendancePolicyUpdateInput, BotConfigurationInput, CompanyCreateInput, CompanyUpdateInput, InvitationCreateInput, MembershipRoleUpdateInput
 from app.security import new_refresh_token, token_digest
 
 router = APIRouter(prefix="/api/v1/companies", tags=["companies"])
@@ -40,6 +40,25 @@ def create_company(payload: CompanyCreateInput, user: User = Depends(current_use
     try: session.commit()
     except IntegrityError: session.rollback(); raise HTTPException(status_code=400, detail="Unable to create company")
     return {"name": company.name, "slug": company.slug, "role": "owner"}
+
+
+@router.get("/{slug}")
+def get_company(slug: str, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str | None]:
+    company = require_company_permission(slug, user, session, "company.read")
+    return {"name": company.name, "name_en": company.name_en, "industry": company.industry, "city": company.city, "phone": company.phone, "timezone": company.timezone}
+
+
+@router.patch("/{slug}")
+def update_company(slug: str, payload: CompanyUpdateInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str | None]:
+    company = require_company_permission(slug, user, session, "company.edit")
+    company.name = payload.name.strip()
+    company.name_en = payload.name_en
+    company.industry = payload.industry
+    company.city = payload.city
+    company.phone = payload.phone
+    session.add(AuditLog(company_id=company.id, actor_id=user.id, action="company.updated"))
+    session.commit()
+    return {"name": company.name, "name_en": company.name_en}
 
 
 def validate_attendance_policy(mode: str, allowed_cidr: str | None, latitude: float | str | None, longitude: float | str | None, radius_meters: int | None) -> None:
