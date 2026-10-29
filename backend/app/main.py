@@ -45,4 +45,4 @@ app.include_router(platform_router)
 @app.get("/api/v1/health", tags=["operations"])
 def health() -> dict[str, str]:
     """Liveness endpoint intentionally excludes configuration secrets."""
-    return {"status": "ok", "service": settings.app_name, "environment": settings.environment}
+    return {"status": "ok", "service": settings.app_name}
