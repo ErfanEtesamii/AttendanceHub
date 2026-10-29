@@ -4,12 +4,14 @@ from pydantic import BaseModel, EmailStr, Field
 
 class RegisterInput(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=12, max_length=128)
+    username: str = Field(pattern="^[a-z0-9_]{3,32}$")
+    phone: str | None = Field(default=None, max_length=32)
+    password: str = Field(min_length=8, max_length=128)
     name: str = Field(min_length=1, max_length=100)
 
 
 class LoginInput(BaseModel):
-    email: EmailStr
+    identifier: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1, max_length=128)
 
 

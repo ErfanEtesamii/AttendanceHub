@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import hmac
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -58,7 +58,9 @@ def issue_otp(email: str, purpose: str, session: Session, settings: Settings) ->
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterInput, response: Response, request: Request, session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
     check_auth_rate_limit(request)
-    user = User(email=str(payload.email).lower(), name=payload.name.strip(), password_hash=hash_password(payload.password), email_verified=False)
+    if payload.username in {"admin", "api", "platform", "login", "register", "dashboard", "www"} or not any(c.islower() for c in payload.password) or not any(c.isupper() for c in payload.password) or not any(c.isdigit() for c in payload.password) or not any(not c.isalnum() for c in payload.password):
+        raise HTTPException(status_code=422, detail="Invalid registration details")
+    user = User(email=str(payload.email).lower(), username=payload.username, phone=payload.phone, name=payload.name.strip(), password_hash=hash_password(payload.password), email_verified=False)
     session.add(user)
     try:
         session.commit()
@@ -72,7 +74,7 @@ def register(payload: RegisterInput, response: Response, request: Request, sessi
 @router.post("/login")
 def login(payload: LoginInput, response: Response, request: Request, session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
     check_auth_rate_limit(request)
-    user = session.scalar(select(User).where(User.email == str(payload.email).lower()))
+    user = session.scalar(select(User).where(or_(User.email == payload.identifier.lower(), User.username == payload.identifier.lower())))
     if user is None or not verify_password(payload.password, user.password_hash) or not user.email_verified:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     set_session(response, user, session, settings)
