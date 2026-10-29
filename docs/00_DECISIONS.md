@@ -50,3 +50,6 @@ AttendHub یک درگاه مستقل، ابری و چندشرکتی برای و�
 ## یادداشت‌های سخت‌سازی
 
 - پاسخ‌های API با `X-Content-Type-Options`، `Referrer-Policy`، `X-Frame-Options`، `Permissions-Policy` و `Cache-Control: no-store` ارسال می‌شوند. CSP کامل و آزمون E2E مرورگر هنوز پیش از انتشار عمومی لازم‌اند.
+- 2026-10-30: IP کلاینت فقط با `TRUSTED_PROXIES` صریح از `X-Forwarded-For` استخراج می‌شود؛ در غیر این صورت header نادیده گرفته می‌شود.
+- 2026-10-30: OTP بر پایهٔ دیتابیس cooldown شصت‌ثانیه و سقف پنج ارسال در ساعت دارد؛ آخرین challenge معتبر می‌ماند.
+- 2026-10-30: Docker Compose بدون رازهای JWT و encryption صریح بالا نمی‌آید. اجرای Compose واقعی همچنان نیازمند daemon فعال Docker است.

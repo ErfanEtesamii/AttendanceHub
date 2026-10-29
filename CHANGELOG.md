@@ -15,6 +15,8 @@ All notable changes to this project are documented in this file.
 - Faraz Honar idempotent seed, platform-admin CLI/API, and an explicit mock attendance-engine adapter boundary.
 - Company member role management, audit-log view, and a dashboard that lists a signed-in user's companies.
 - Default security headers and no-store caching for backend API responses.
+- OTP cooldown/hourly limits, verified-email sessions, refresh reuse revocation, logout-all, profile preferences, and username login.
+- Trusted-proxy client-IP resolution, CSRF origin fallback checks, request body limits, frontend CSP, normalized policy targets, invitation revocation, and member status controls.
 
 ## [0.1.0] - 2026-10-24
 
