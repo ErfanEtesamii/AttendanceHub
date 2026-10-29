@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     otp_provider: str = "console"
     shared_bot_username: str | None = None
     farazhonar_owner_email: str | None = None
+    farazhonar_allowed_cidr: str = "192.168.10.0/24"
     app_public_url: str = "http://localhost:3000"
     smtp_host: str | None = None
     smtp_port: int = 587

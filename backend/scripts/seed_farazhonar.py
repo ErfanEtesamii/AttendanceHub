@@ -3,17 +3,22 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import AttendancePolicy, BotConfiguration, Company, Membership, User
+from app.models import AttendancePolicy, BotConfiguration, Company, Membership, PolicyIpRange, User
 
 
 def main() -> None:
     settings = get_settings()
     with SessionLocal() as session:
-        company = session.scalar(select(Company).where(Company.slug == "faraz-honar"))
+        company = session.scalar(select(Company).where(Company.slug == "farazhonar"))
+        legacy_company = session.scalar(select(Company).where(Company.slug == "faraz-honar"))
+        if company is None and legacy_company is not None:
+            legacy_company.slug = "farazhonar"
+            company = legacy_company
         if company is None:
-            company = Company(name="فراز هنر", slug="faraz-honar", timezone="Asia/Tehran")
+            company = Company(name="فراز هنر", slug="farazhonar", timezone="Asia/Tehran", is_system_seeded=True)
             session.add(company); session.flush()
-            session.add(AttendancePolicy(company_id=company.id, mode="ip", allowed_cidr="192.168.10.0/24"))
+            session.add(AttendancePolicy(company_id=company.id, mode="ip", allowed_cidr=settings.farazhonar_allowed_cidr))
+            session.add(PolicyIpRange(company_id=company.id, policy_id=company.id, cidr=settings.farazhonar_allowed_cidr, label="Faraz Honar network"))
             session.add(BotConfiguration(company_id=company.id, mode="shared", username=settings.shared_bot_username))
         if settings.farazhonar_owner_email:
             owner = session.scalar(select(User).where(User.email == settings.farazhonar_owner_email.lower()))
