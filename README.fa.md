@@ -16,6 +16,10 @@
 - بک‌اند: `cd backend; python -m pytest`
 - فرانت‌اند: `cd frontend; npm ci; npm run lint; npm run typecheck; npm run build`
 
+## ساخت فایل قابل‌ارسال
+
+از ریشهٔ پروژه `npm run package` را اجرا کنید. فایل `dist/AttendanceHub-source.zip` ساخته می‌شود و شامل سورس، migrationها، مستندات و تنظیمات نمونه است؛ `.env`، `.git`، dependencyها و خروجی build داخل آن قرار نمی‌گیرند.
+
 ## عملیات
 
 - فقط با `python scripts/create_platform_admin.py owner@example.com` می‌توان حساب موجود را مدیر پلتفرم کرد؛ ثبت‌نام عمومی همیشه نقش کاربر عادی می‌سازد.

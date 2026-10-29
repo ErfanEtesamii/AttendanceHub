@@ -16,6 +16,10 @@ The application refuses to start in production with sample/short secrets or the 
 - Backend: `cd backend; python -m pytest`
 - Frontend: `cd frontend; npm ci; npm run lint; npm run typecheck; npm run build`
 
+## Source package
+
+Run `npm run package` from the repository root to create `dist/AttendanceHub-source.zip`. It includes source, migrations, documentation, and sample configuration while excluding `.env`, Git metadata, dependencies, and build artifacts.
+
 See `README.fa.md` for Persian setup instructions and `docs/00_DECISIONS.md` for architecture decisions.
 
 ## Operations

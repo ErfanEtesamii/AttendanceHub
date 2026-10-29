@@ -1,0 +1,7 @@
+{
+  "name": "attendhub-release-tools",
+  "private": true,
+  "scripts": {
+    "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package.ps1"
+  }
+}

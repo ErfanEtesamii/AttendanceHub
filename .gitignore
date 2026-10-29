@@ -8,5 +8,6 @@ __pycache__/
 *.py[cod]
 *.tsbuildinfo
 coverage/
+dist/
 htmlcov/
 backend/.venv/
