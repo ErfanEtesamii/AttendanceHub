@@ -15,6 +15,9 @@ app = FastAPI(title=settings.app_name, version="0.1.0", docs_url=None, redoc_url
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
+        content_length = request.headers.get("content-length")
+        if request.url.path.startswith("/api/") and content_length and content_length.isdigit() and int(content_length) > 1_048_576:
+            return Response(status_code=413, content="Request body too large")
         if request.url.path.startswith("/api/") and request.method in {"POST", "PUT", "PATCH", "DELETE"} and (request.cookies.get("ah_access") or request.cookies.get("ah_refresh")):
             origin = request.headers.get("origin")
             same_origin_fetch = request.headers.get("sec-fetch-site") == "same-origin"
