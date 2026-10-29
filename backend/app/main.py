@@ -17,7 +17,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.url.path.startswith("/api/") and request.method in {"POST", "PUT", "PATCH", "DELETE"} and (request.cookies.get("ah_access") or request.cookies.get("ah_refresh")):
             origin = request.headers.get("origin")
-            if not origin or origin not in settings.cors_origin_list:
+            same_origin_fetch = request.headers.get("sec-fetch-site") == "same-origin"
+            if (origin and origin not in settings.cors_origin_list) or (not origin and not same_origin_fetch):
                 return Response(status_code=403, content="Cross-site request rejected")
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
