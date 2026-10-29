@@ -7,3 +7,5 @@
 - [ ] Run backend tests, frontend lint/typecheck/build and the CI secret scan.
 - [ ] Verify registration → OTP → company onboarding and invitation acceptance on a production-like environment.
 - [ ] Confirm API responses carry security headers and cross-origin state-changing requests return 403.
+- [ ] Confirm Docker Desktop/daemon is running before `docker compose up --build`; the Compose file intentionally fails without explicit JWT/encryption secrets.
+- [ ] Verify PostgreSQL backup and restore procedures before production traffic, and rotate JWT/encryption/SMTP secrets on a defined schedule.
