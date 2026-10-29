@@ -31,7 +31,9 @@ def set_access_cookie(response: Response, token: str, settings: Settings) -> Non
 
 def set_session(response: Response, user: User, session: Session, settings: Settings) -> None:
     refresh = new_refresh_token()
-    session.add(RefreshToken(user_id=user.id, token_hash=token_digest(refresh), expires_at=datetime.now(timezone.utc) + timedelta(days=14)))
+    if not user.email_verified:
+        raise HTTPException(status_code=403, detail="Email verification required")
+    session.add(RefreshToken(user_id=user.id, token_hash=token_digest(refresh), token_version=user.token_version, expires_at=datetime.now(timezone.utc) + timedelta(days=14)))
     session.commit()
     set_access_cookie(response, issue_access_token(str(user.id), user.token_version, settings), settings)
     response.set_cookie("ah_refresh", refresh, httponly=True, secure=settings.environment == "production", samesite="lax", max_age=1_209_600, path="/api/v1/auth")
@@ -99,13 +101,28 @@ def me(ah_access: str | None = Cookie(default=None), session: Session = Depends(
 @router.post("/refresh")
 def refresh(response: Response, ah_refresh: str | None = Cookie(default=None), session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
     if not ah_refresh: raise HTTPException(status_code=401, detail="Invalid session")
-    stored = session.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_digest(ah_refresh), RefreshToken.revoked_at.is_(None)))
-    if stored is None or stored.expires_at < datetime.now(timezone.utc): raise HTTPException(status_code=401, detail="Invalid session")
+    stored = session.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_digest(ah_refresh)))
+    if stored is None: raise HTTPException(status_code=401, detail="Invalid session")
     user = session.get(User, stored.user_id)
-    if user is None: raise HTTPException(status_code=401, detail="Invalid session")
+    if user is None or stored.revoked_at is not None or stored.expires_at < datetime.now(timezone.utc) or stored.token_version != user.token_version:
+        if user is not None and stored.revoked_at is not None:
+            user.token_version += 1
+            session.query(RefreshToken).filter(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)).update({RefreshToken.revoked_at: datetime.now(timezone.utc)})
+            session.commit()
+        raise HTTPException(status_code=401, detail="Invalid session")
     stored.revoked_at = datetime.now(timezone.utc); session.commit()
     set_session(response, user, session, settings)
     return {"status": "refreshed"}
+
+
+@router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
+def logout_all(response: Response, user: User = Depends(current_user), session: Session = Depends(get_session)) -> Response:
+    user.token_version += 1
+    session.query(RefreshToken).filter(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)).update({RefreshToken.revoked_at: datetime.now(timezone.utc)})
+    session.commit()
+    response.delete_cookie("ah_access", path="/")
+    response.delete_cookie("ah_refresh", path="/api/v1/auth")
+    return response
 
 
 @router.post("/otp/request", status_code=status.HTTP_202_ACCEPTED)
