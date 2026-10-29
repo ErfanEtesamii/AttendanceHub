@@ -21,7 +21,7 @@ def require_company_permission(slug: str, user: User, session: Session, permissi
 
 @router.get("")
 def list_companies(user: User = Depends(current_user), session: Session = Depends(get_session)) -> list[dict[str, str]]:
-    rows = session.execute(select(Company, Membership.role).join(Membership).where(Membership.user_id == user.id)).all()
+    rows = session.execute(select(Company, Membership.role).join(Membership).where(Membership.user_id == user.id, Membership.status == "active", Company.status == "active")).all()
     return [{"name": company.name, "slug": company.slug, "role": role} for company, role in rows]
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -106,7 +106,22 @@ def list_audit(slug: str, user: User = Depends(current_user), session: Session =
 def list_members(slug: str, user: User = Depends(current_user), session: Session = Depends(get_session)) -> list[dict[str, str]]:
     company = require_company_permission(slug, user, session, "company.read")
     rows = session.execute(select(User, Membership.role).join(Membership).where(Membership.company_id == company.id)).all()
-    return [{"email": member.email, "name": member.name, "role": role} for member, role in rows]
+    rows = session.execute(select(User, Membership).join(Membership).where(Membership.company_id == company.id)).all()
+    return [{"id": str(membership.id), "email": member.email, "name": member.name, "role": membership.role, "status": membership.status} for member, membership in rows]
+
+
+@router.patch("/{slug}/members/{member_id}/status")
+def update_member_status(slug: str, member_id: str, member_status: str, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str]:
+    company = require_company_permission(slug, user, session, "members.manage")
+    if member_status not in {"active", "suspended"}:
+        raise HTTPException(status_code=422, detail="Invalid member status")
+    membership = session.scalar(select(Membership).where(Membership.id == member_id, Membership.company_id == company.id))
+    if membership is None or membership.role == "owner":
+        raise HTTPException(status_code=404, detail="Member not found")
+    membership.status = member_status
+    session.add(AuditLog(company_id=company.id, actor_id=user.id, action="member.status_updated"))
+    session.commit()
+    return {"id": str(membership.id), "status": membership.status}
 
 
 @router.post("/{slug}/invitations", status_code=status.HTTP_201_CREATED)
@@ -128,7 +143,12 @@ def accept_invitation(token: str, user: User = Depends(current_user), session: S
     if invitation is None or invitation.expires_at < now or invitation.email != user.email:
         raise HTTPException(status_code=404, detail="Invitation not found")
     existing = session.scalar(select(Membership).where(Membership.company_id == invitation.company_id, Membership.user_id == user.id))
-    if existing is None: session.add(Membership(company_id=invitation.company_id, user_id=user.id, role=invitation.role))
+    if not user.email_verified:
+        raise HTTPException(status_code=403, detail="Verified email required")
+    if existing is None:
+        session.add(Membership(company_id=invitation.company_id, user_id=user.id, role=invitation.role))
+    elif existing.status != "active":
+        existing.status = "active"
     invitation.accepted_at = now; session.add(AuditLog(company_id=invitation.company_id, actor_id=user.id, action="invitation.accepted")); session.commit()
     company = session.get(Company, invitation.company_id)
     return {"status": "accepted", "slug": company.slug}
@@ -144,6 +164,18 @@ def update_member_role(slug: str, member_email: str, payload: MembershipRoleUpda
     membership.role = payload.role
     session.add(AuditLog(company_id=company.id, actor_id=user.id, action="member.role_updated")); session.commit()
     return {"email": member.email, "role": membership.role}
+
+
+@router.patch("/{slug}/members/id/{member_id}/role")
+def update_member_role_by_id(slug: str, member_id: str, payload: MembershipRoleUpdateInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str]:
+    company = require_company_permission(slug, user, session, "members.manage")
+    membership = session.scalar(select(Membership).where(Membership.id == member_id, Membership.company_id == company.id))
+    if membership is None or membership.role == "owner" or membership.user_id == user.id:
+        raise HTTPException(status_code=404, detail="Member not found")
+    membership.role = payload.role
+    session.add(AuditLog(company_id=company.id, actor_id=user.id, action="member.role_updated"))
+    session.commit()
+    return {"id": str(membership.id), "role": membership.role}
 
 
 @router.get("/{slug}/bot")
