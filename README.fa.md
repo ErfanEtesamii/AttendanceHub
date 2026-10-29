@@ -5,6 +5,7 @@
 ## اجرای محلی
 
 ۱. فایل `.env.example` را با نام `.env` کپی کنید.
+   برای ساخت راز محلی، `python -c "import secrets; print(secrets.token_urlsafe(48))"` را اجرا و دو خروجی متفاوت را برای `JWT_SECRET` و `ENCRYPTION_KEY` بگذارید.
 ۲. دستور `docker compose up --build` را اجرا کنید.
 ۳. رابط در `http://localhost:3000` و سلامت بک‌اند در `http://localhost:8000/api/v1/health` در دسترس است.
 ۴. پس از migration، برای ساخت شرکت seed فراز هنر از پوشهٔ `backend/` دستور `python scripts/seed_farazhonar.py` را اجرا کنید. برای تعیین مالکِ حساب موجود، ابتدا `FARAZHONAR_OWNER_EMAIL` را تنظیم کنید.

@@ -5,6 +5,7 @@ Cloud, multi-tenant onboarding portal for Telegram-based attendance systems.
 ## Local development
 
 1. Copy `.env.example` to `.env` and replace development placeholders where appropriate.
+   Generate local secrets with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and assign distinct values to `JWT_SECRET` and `ENCRYPTION_KEY`.
 2. Run `docker compose up --build`.
 3. Open `http://localhost:3000`; backend health is at `http://localhost:8000/api/v1/health`.
 4. After migrations, run `python scripts/seed_farazhonar.py` from `backend/` to create the idempotent Faraz Honar seed. Set `FARAZHONAR_OWNER_EMAIL` first if an existing account should own it.
