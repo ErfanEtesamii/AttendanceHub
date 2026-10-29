@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_session
 from app.models import Company, User
-from app.routers.companies import current_user
+from app.deps import current_user
 
 router = APIRouter(prefix="/api/v1/platform", tags=["platform"])
 

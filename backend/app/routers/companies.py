@@ -1,33 +1,23 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
+from app.deps import current_user, get_company_context
 from app.database import get_session
 from app.attendance import ip_matches_cidr, location_is_allowed
 from app.bots import encrypt_bot_token, has_decryptable_token, validate_dedicated_token
 from app.models import AttendancePolicy, AuditLog, BotConfiguration, Company, Invitation, Membership, User
-from app.permissions import has_permission
 from app.schemas import AttendancePolicyTestInput, AttendancePolicyUpdateInput, BotConfigurationInput, CompanyCreateInput, InvitationCreateInput, MembershipRoleUpdateInput
-from app.security import decode_access_token, new_refresh_token, token_digest
+from app.security import new_refresh_token, token_digest
 
 router = APIRouter(prefix="/api/v1/companies", tags=["companies"])
 
-def current_user(ah_access: str | None = Cookie(default=None), session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> User:
-    claims = decode_access_token(ah_access, settings) if ah_access else None
-    user = session.get(User, claims.get("sub")) if claims else None
-    if user is None or claims.get("ver") != user.token_version: raise HTTPException(status_code=401, detail="Invalid session")
-    return user
-
-
 def require_company_permission(slug: str, user: User, session: Session, permission: str) -> Company:
-    company = session.scalar(select(Company).where(Company.slug == slug))
-    membership = session.scalar(select(Membership).where(Membership.company_id == company.id, Membership.user_id == user.id)) if company else None
-    if company is None or company.status != "active" or membership is None or not has_permission(membership.role, permission): raise HTTPException(status_code=404, detail="Company not found")
-    return company
+    return get_company_context(slug, user, session, permission).company
 
 @router.get("")
 def list_companies(user: User = Depends(current_user), session: Session = Depends(get_session)) -> list[dict[str, str]]:
