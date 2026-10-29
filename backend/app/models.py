@@ -59,6 +59,15 @@ class Company(Base):
     slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Tehran")
     status: Mapped[str] = mapped_column(String(16), default="active")
+    name_en: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    industry: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    employee_count_range: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    registration_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    logo_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    is_system_seeded: Mapped[bool] = mapped_column(default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -69,6 +78,9 @@ class Membership(Base):
     company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(20), default="employee")
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    manager_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("memberships.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class AttendancePolicy(Base):

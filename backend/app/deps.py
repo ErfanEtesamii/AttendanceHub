@@ -30,6 +30,6 @@ class CompanyContext:
 def get_company_context(slug: str, user: User, session: Session, required_permission: str) -> CompanyContext:
     company = session.scalar(select(Company).where(Company.slug == slug))
     membership = session.scalar(select(Membership).where(Membership.company_id == company.id, Membership.user_id == user.id)) if company else None
-    if company is None or company.status != "active" or membership is None or not has_permission(membership.role, required_permission):
+    if company is None or company.status != "active" or membership is None or membership.status != "active" or not has_permission(membership.role, required_permission):
         raise HTTPException(status_code=404, detail="Company not found")
     return CompanyContext(company=company, membership=membership, user=user)
