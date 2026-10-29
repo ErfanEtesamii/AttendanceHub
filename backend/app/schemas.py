@@ -29,6 +29,10 @@ class PreferencesInput(BaseModel):
     theme: Literal["light", "dark", "system"]
 
 
+class CompanyStatusInput(BaseModel):
+    status: Literal["active", "pending_review", "suspended"]
+
+
 class OtpRequestInput(BaseModel):
     email: EmailStr
     purpose: Literal["verify_email", "reset_password", "login_2fa"]

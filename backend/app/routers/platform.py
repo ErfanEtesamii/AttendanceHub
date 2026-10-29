@@ -3,8 +3,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_session
-from app.models import Company, User
+from app.models import AuditLog, Company, User
 from app.deps import current_user
+from app.schemas import CompanyStatusInput
 
 router = APIRouter(prefix="/api/v1/platform", tags=["platform"])
 
@@ -22,9 +23,10 @@ def list_platform_companies(_: User = Depends(platform_admin), session: Session 
 
 
 @router.patch("/companies/{slug}/status")
-def update_company_status(slug: str, status: str, _: User = Depends(platform_admin), session: Session = Depends(get_session)) -> dict[str, str]:
-    if status not in {"active", "suspended"}: raise HTTPException(status_code=422, detail="Invalid status")
+def update_company_status(slug: str, payload: CompanyStatusInput, user: User = Depends(platform_admin), session: Session = Depends(get_session)) -> dict[str, str]:
     company = session.scalar(select(Company).where(Company.slug == slug))
     if company is None: raise HTTPException(status_code=404, detail="Company not found")
-    company.status = status; session.commit()
+    company.status = payload.status
+    session.add(AuditLog(company_id=company.id, actor_id=user.id, action="company.status_updated"))
+    session.commit()
     return {"slug": company.slug, "status": company.status}
