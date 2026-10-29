@@ -24,6 +24,15 @@ def list_companies(user: User = Depends(current_user), session: Session = Depend
     rows = session.execute(select(Company, Membership.role).join(Membership).where(Membership.user_id == user.id, Membership.status == "active", Company.status == "active")).all()
     return [{"name": company.name, "slug": company.slug, "role": role} for company, role in rows]
 
+
+@router.get("/{slug}/overview")
+def company_overview(slug: str, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str | int | bool]:
+    company = require_company_permission(slug, user, session, "company.read")
+    policy = session.get(AttendancePolicy, company.id)
+    bot = session.get(BotConfiguration, company.id)
+    member_count = session.scalar(select(func.count()).select_from(Membership).where(Membership.company_id == company.id, Membership.status == "active"))
+    return {"name": company.name, "status": company.status, "member_count": member_count or 0, "attendance_mode": policy.mode if policy else "not_configured", "bot_configured": bot is not None}
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_company(payload: CompanyCreateInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str]:
     if payload.mode == "ip" and not payload.allowed_cidr: raise HTTPException(status_code=422, detail="CIDR is required for IP mode")
