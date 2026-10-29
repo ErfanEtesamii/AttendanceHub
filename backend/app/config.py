@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_from_email: str | None = None
+    trusted_proxies: str = ""
+
+    @property
+    def trusted_proxy_networks(self) -> list[str]:
+        return [item.strip() for item in self.trusted_proxies.split(",") if item.strip()]
 
     @field_validator("environment")
     @classmethod
