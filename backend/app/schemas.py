@@ -1,3 +1,4 @@
+from typing import Literal
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -14,7 +15,7 @@ class LoginInput(BaseModel):
 
 class OtpRequestInput(BaseModel):
     email: EmailStr
-    purpose: str = Field(pattern="^(verify_email|reset_password)$")
+    purpose: Literal["verify_email", "reset_password", "login_2fa"]
 
 
 class OtpVerifyInput(OtpRequestInput):

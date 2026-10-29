@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import hmac
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -34,8 +35,17 @@ def set_session(response: Response, user: User, session: Session, settings: Sett
 
 
 def issue_otp(email: str, purpose: str, session: Session, settings: Settings) -> None:
+    now = datetime.now(timezone.utc)
+    recent = session.scalars(select(OtpChallenge).where(OtpChallenge.email == email, OtpChallenge.purpose == purpose, OtpChallenge.created_at >= now - timedelta(hours=1))).all()
+    if len(recent) >= 5:
+        return
+    last = session.scalar(select(OtpChallenge).where(OtpChallenge.email == email, OtpChallenge.purpose == purpose, OtpChallenge.consumed_at.is_(None), OtpChallenge.invalidated_at.is_(None)).order_by(OtpChallenge.created_at.desc()))
+    if last is not None and last.created_at >= now - timedelta(seconds=60):
+        return
+    if last is not None:
+        last.invalidated_at = now
     code = new_otp()
-    session.add(OtpChallenge(email=email, purpose=purpose, code_hash=token_digest(code), expires_at=datetime.now(timezone.utc) + timedelta(minutes=5)))
+    session.add(OtpChallenge(email=email, purpose=purpose, code_hash=token_digest(code), expires_at=now + timedelta(minutes=5)))
     session.commit()
     get_otp_sender(settings).send(email, code, purpose)
 
@@ -98,15 +108,21 @@ def refresh(response: Response, ah_refresh: str | None = Cookie(default=None), s
 @router.post("/otp/request", status_code=status.HTTP_202_ACCEPTED)
 def request_otp(payload: OtpRequestInput, request: Request, session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
     check_auth_rate_limit(request)
-    issue_otp(str(payload.email).lower(), payload.purpose, session, settings)
+    email = str(payload.email).lower()
+    user = session.scalar(select(User).where(User.email == email))
+    eligible = user is not None and ((payload.purpose == "verify_email" and not user.email_verified) or payload.purpose == "reset_password")
+    if eligible:
+        issue_otp(email, payload.purpose, session, settings)
+    else:
+        hmac.compare_digest(token_digest("000000"), token_digest("000000"))
     return {"status": "accepted"}
 
 
 @router.post("/otp/verify")
 def verify_otp(payload: OtpVerifyInput, response: Response, session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
-    challenge = session.scalar(select(OtpChallenge).where(OtpChallenge.email == str(payload.email).lower(), OtpChallenge.purpose == payload.purpose, OtpChallenge.consumed_at.is_(None)).order_by(OtpChallenge.expires_at.desc()))
+    challenge = session.scalar(select(OtpChallenge).where(OtpChallenge.email == str(payload.email).lower(), OtpChallenge.purpose == payload.purpose, OtpChallenge.consumed_at.is_(None), OtpChallenge.invalidated_at.is_(None)).order_by(OtpChallenge.expires_at.desc()))
     now = datetime.now(timezone.utc)
-    if challenge is None or challenge.expires_at < now or challenge.attempts >= 5 or challenge.code_hash != token_digest(payload.code):
+    if challenge is None or challenge.expires_at < now or challenge.attempts >= 5 or not hmac.compare_digest(challenge.code_hash if challenge else "0" * 64, token_digest(payload.code)):
         if challenge is not None:
             challenge.attempts += 1; session.commit()
         raise HTTPException(status_code=400, detail="Invalid or expired verification code")
