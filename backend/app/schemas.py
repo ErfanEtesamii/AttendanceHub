@@ -15,6 +15,20 @@ class LoginInput(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class ChangePasswordInput(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class ProfileUpdateInput(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class PreferencesInput(BaseModel):
+    locale: Literal["fa", "en"]
+    theme: Literal["light", "dark", "system"]
+
+
 class OtpRequestInput(BaseModel):
     email: EmailStr
     purpose: Literal["verify_email", "reset_password", "login_2fa"]

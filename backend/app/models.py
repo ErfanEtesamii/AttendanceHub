@@ -18,6 +18,8 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(String(32), unique=True, index=True, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     two_factor_enabled: Mapped[bool] = mapped_column(default=False)
+    locale: Mapped[str] = mapped_column(String(8), default="fa")
+    theme: Mapped[str] = mapped_column(String(16), default="system")
     name: Mapped[str] = mapped_column(String(100))
     password_hash: Mapped[str] = mapped_column(String(255))
     token_version: Mapped[int] = mapped_column(Integer, default=0)

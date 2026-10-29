@@ -9,7 +9,7 @@ from app.config import Settings, get_settings
 from app.client_ip import resolve_client_ip
 from app.database import get_session
 from app.models import OtpChallenge, RefreshToken, User
-from app.schemas import LoginInput, OtpRequestInput, OtpVerifyInput, RegisterInput
+from app.schemas import ChangePasswordInput, LoginInput, OtpRequestInput, OtpVerifyInput, PreferencesInput, ProfileUpdateInput, RegisterInput
 from app.security import decode_access_token, hash_password, issue_access_token, new_otp, new_refresh_token, token_digest, verify_password
 from app.rate_limit import SlidingWindowLimiter
 from app.otp import get_otp_sender
@@ -119,6 +119,38 @@ def refresh(response: Response, ah_refresh: str | None = Cookie(default=None), s
 
 @router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
 def logout_all(response: Response, user: User = Depends(current_user), session: Session = Depends(get_session)) -> Response:
+    user.token_version += 1
+    session.query(RefreshToken).filter(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)).update({RefreshToken.revoked_at: datetime.now(timezone.utc)})
+    session.commit()
+    response.delete_cookie("ah_access", path="/")
+    response.delete_cookie("ah_refresh", path="/api/v1/auth")
+    return response
+
+
+@router.patch("/me")
+def update_profile(payload: ProfileUpdateInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str]:
+    user.name = payload.name.strip()
+    session.commit()
+    return {"name": user.name}
+
+
+@router.get("/preferences")
+def preferences(user: User = Depends(current_user)) -> dict[str, str]:
+    return {"locale": user.locale, "theme": user.theme}
+
+
+@router.patch("/preferences")
+def update_preferences(payload: PreferencesInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str]:
+    user.locale, user.theme = payload.locale, payload.theme
+    session.commit()
+    return {"locale": user.locale, "theme": user.theme}
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+def change_password(payload: ChangePasswordInput, response: Response, user: User = Depends(current_user), session: Session = Depends(get_session)) -> Response:
+    if not verify_password(payload.current_password, user.password_hash) or not any(c.islower() for c in payload.new_password) or not any(c.isupper() for c in payload.new_password) or not any(c.isdigit() for c in payload.new_password) or not any(not c.isalnum() for c in payload.new_password):
+        raise HTTPException(status_code=400, detail="Invalid password")
+    user.password_hash = hash_password(payload.new_password)
     user.token_version += 1
     session.query(RefreshToken).filter(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)).update({RefreshToken.revoked_at: datetime.now(timezone.utc)})
     session.commit()
