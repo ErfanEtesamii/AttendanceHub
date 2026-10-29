@@ -10,7 +10,7 @@ from app.deps import current_user, get_company_context
 from app.database import get_session
 from app.attendance import ip_matches_cidr, location_is_allowed
 from app.bots import encrypt_bot_token, has_decryptable_token, validate_dedicated_token
-from app.models import AttendancePolicy, AuditLog, BotConfiguration, Company, Invitation, Membership, User
+from app.models import AttendancePolicy, AuditLog, BotConfiguration, Company, Invitation, Membership, PolicyGeofence, PolicyIpRange, User
 from app.schemas import AttendancePolicyTestInput, AttendancePolicyUpdateInput, BotConfigurationInput, CompanyCreateInput, InvitationCreateInput, MembershipRoleUpdateInput
 from app.security import new_refresh_token, token_digest
 
@@ -33,6 +33,10 @@ def create_company(payload: CompanyCreateInput, user: User = Depends(current_use
     session.add(company); session.flush()
     session.add(Membership(company_id=company.id, user_id=user.id, role="owner"))
     session.add(AttendancePolicy(company_id=company.id, mode=payload.mode, allowed_cidr=payload.allowed_cidr, latitude=payload.latitude, longitude=payload.longitude, radius_meters=payload.radius_meters))
+    if payload.mode == "ip" and payload.allowed_cidr:
+        session.add(PolicyIpRange(company_id=company.id, policy_id=company.id, cidr=payload.allowed_cidr, label="Primary network"))
+    if payload.mode == "location" and payload.latitude is not None and payload.longitude is not None and payload.radius_meters:
+        session.add(PolicyGeofence(company_id=company.id, policy_id=company.id, name="Primary location", latitude=float(payload.latitude), longitude=float(payload.longitude), radius_meters=payload.radius_meters))
     try: session.commit()
     except IntegrityError: session.rollback(); raise HTTPException(status_code=400, detail="Unable to create company")
     return {"name": company.name, "slug": company.slug, "role": "owner"}
@@ -69,6 +73,12 @@ def update_attendance_policy(slug: str, payload: AttendancePolicyUpdateInput, us
     policy.latitude = str(payload.latitude) if payload.mode == "location" else None
     policy.longitude = str(payload.longitude) if payload.mode == "location" else None
     policy.radius_meters = payload.radius_meters if payload.mode == "location" else None
+    session.query(PolicyIpRange).filter(PolicyIpRange.company_id == company.id).delete()
+    session.query(PolicyGeofence).filter(PolicyGeofence.company_id == company.id).delete()
+    if payload.mode == "ip" and payload.allowed_cidr:
+        session.add(PolicyIpRange(company_id=company.id, policy_id=company.id, cidr=payload.allowed_cidr, label="Primary network"))
+    if payload.mode == "location" and payload.latitude is not None and payload.longitude is not None and payload.radius_meters:
+        session.add(PolicyGeofence(company_id=company.id, policy_id=company.id, name="Primary location", latitude=payload.latitude, longitude=payload.longitude, radius_meters=payload.radius_meters))
     session.add(AuditLog(company_id=company.id, actor_id=user.id, action="attendance_policy.updated")); session.commit()
     return {"status": "saved", "mode": policy.mode}
 
