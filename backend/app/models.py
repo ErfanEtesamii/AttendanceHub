@@ -91,6 +91,29 @@ class AttendancePolicy(Base):
     latitude: Mapped[str | None] = mapped_column(String(32), nullable=True)
     longitude: Mapped[str | None] = mapped_column(String(32), nullable=True)
     radius_meters: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_accuracy_meters: Mapped[int] = mapped_column(Integer, default=50)
+    max_fix_age_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class PolicyIpRange(Base):
+    __tablename__ = "policy_ip_ranges"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    policy_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("attendance_policies.company_id", ondelete="CASCADE"), index=True)
+    cidr: Mapped[str] = mapped_column(String(64))
+    label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+
+class PolicyGeofence(Base):
+    __tablename__ = "policy_geofences"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    policy_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("attendance_policies.company_id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    latitude: Mapped[float] = mapped_column()
+    longitude: Mapped[float] = mapped_column()
+    radius_meters: Mapped[int] = mapped_column(Integer)
 
 
 class AuditLog(Base):
