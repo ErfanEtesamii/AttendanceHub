@@ -21,9 +21,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 return Response(status_code=403, content="Cross-site request rejected")
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("Referrer-Policy", "strict-origin")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if settings.environment == "production":
+            response.headers.setdefault("Strict-Transport-Security", "max-age=15552000")
         if request.url.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
         return response
