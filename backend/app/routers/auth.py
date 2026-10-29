@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
+from app.client_ip import resolve_client_ip
 from app.database import get_session
 from app.models import OtpChallenge, RefreshToken, User
 from app.schemas import LoginInput, OtpRequestInput, OtpVerifyInput, RegisterInput
@@ -18,7 +19,9 @@ auth_limiter = SlidingWindowLimiter(limit=10, window_seconds=60)
 
 
 def check_auth_rate_limit(request: Request) -> None:
-    if not auth_limiter.allowed(request.client.host if request.client else "unknown"):
+    settings = get_settings()
+    client_ip = resolve_client_ip(request.client.host if request.client else None, request.headers.get("x-forwarded-for"), settings.trusted_proxy_networks)
+    if client_ip is None or not auth_limiter.allowed(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests")
 
 
