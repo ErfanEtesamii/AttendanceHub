@@ -136,6 +136,24 @@ def create_invitation(slug: str, payload: InvitationCreateInput, user: User = De
     return {"status": "created"}
 
 
+@router.get("/{slug}/invitations")
+def list_invitations(slug: str, user: User = Depends(current_user), session: Session = Depends(get_session)) -> list[dict[str, str | None]]:
+    company = require_company_permission(slug, user, session, "members.invite")
+    invitations = session.scalars(select(Invitation).where(Invitation.company_id == company.id).order_by(Invitation.expires_at.desc())).all()
+    return [{"id": str(item.id), "email": item.email, "role": item.role, "expires_at": item.expires_at.isoformat(), "accepted_at": item.accepted_at.isoformat() if item.accepted_at else None} for item in invitations]
+
+
+@router.delete("/{slug}/invitations/{invitation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_invitation(slug: str, invitation_id: str, user: User = Depends(current_user), session: Session = Depends(get_session)) -> None:
+    company = require_company_permission(slug, user, session, "members.invite")
+    invitation = session.scalar(select(Invitation).where(Invitation.id == invitation_id, Invitation.company_id == company.id, Invitation.accepted_at.is_(None)))
+    if invitation is None:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    session.delete(invitation)
+    session.add(AuditLog(company_id=company.id, actor_id=user.id, action="invitation.revoked"))
+    session.commit()
+
+
 @router.post("/invitations/accept")
 def accept_invitation(token: str, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str]:
     invitation = session.scalar(select(Invitation).where(Invitation.token_hash == token_digest(token), Invitation.accepted_at.is_(None)))
