@@ -15,6 +15,22 @@ jobs:
       - run: python scripts/secret_scan.py
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.6
+        env:
+          POSTGRES_USER: attendhub
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: attendhub
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U attendhub -d attendhub"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://attendhub:ci_password@localhost:5432/attendhub
+      TEST_DATABASE_URL: postgresql+psycopg://attendhub:ci_password@localhost:5432/attendhub
     defaults:
       run:
         working-directory: backend
@@ -23,6 +39,12 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.13" }
       - run: pip install -r requirements.txt
+      - name: Generate ephemeral test secrets
+        run: |
+          python -c "import os,secrets; f=open(os.environ['GITHUB_ENV'],'a'); f.write('JWT_SECRET='+secrets.token_urlsafe(48)+'\nENCRYPTION_KEY='+secrets.token_urlsafe(48)+'\n'); f.close()"
+      - run: alembic upgrade head
+      - run: alembic downgrade base
+      - run: alembic upgrade head
       - run: pytest
   frontend:
     runs-on: ubuntu-latest
