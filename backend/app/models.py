@@ -52,6 +52,13 @@ class OtpChallenge(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class RateLimitHit(Base):
+    __tablename__ = "rate_limit_hits"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    key: Mapped[str] = mapped_column(String(160), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
 class Company(Base):
     __tablename__ = "companies"
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

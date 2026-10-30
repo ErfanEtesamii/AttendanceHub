@@ -20,6 +20,11 @@ class ChangePasswordInput(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class TwoFactorInput(BaseModel):
+    enabled: bool
+    current_password: str = Field(min_length=1, max_length=128)
+
+
 class ProfileUpdateInput(BaseModel):
     name: str = Field(min_length=1, max_length=100)
 
@@ -47,8 +52,9 @@ class OtpRequestInput(BaseModel):
 
 
 class OtpVerifyInput(OtpRequestInput):
-    code: str = Field(pattern="^\\d{6}$")
-    new_password: str | None = Field(default=None, min_length=12, max_length=128)
+    code: str = Field(pattern=r"^\d{6}$")
+    new_password: str | None = Field(default=None, min_length=8, max_length=128)
+    login_token: str | None = Field(default=None, max_length=2048)
 
 
 class CompanyCreateInput(BaseModel):
@@ -56,9 +62,9 @@ class CompanyCreateInput(BaseModel):
     slug: str = Field(pattern="^[a-z0-9-]{3,80}$")
     mode: str = Field(pattern="^(ip|location)$")
     allowed_cidr: str | None = Field(default=None, max_length=64)
-    latitude: str | None = None
-    longitude: str | None = None
-    radius_meters: int | None = Field(default=None, ge=10, le=100000)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    radius_meters: int | None = Field(default=None, ge=20, le=5000)
 
 
 class AttendancePolicyTestInput(BaseModel):
@@ -73,12 +79,16 @@ class AttendancePolicyUpdateInput(BaseModel):
     allowed_cidr: str | None = Field(default=None, max_length=64)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
-    radius_meters: int | None = Field(default=None, ge=10, le=100000)
+    radius_meters: int | None = Field(default=None, ge=20, le=5000)
 
 
 class InvitationCreateInput(BaseModel):
     email: EmailStr
     role: str = Field(pattern="^(admin|manager|hr|employee)$")
+
+
+class InvitationAcceptInput(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
 
 
 class MembershipRoleUpdateInput(BaseModel):

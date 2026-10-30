@@ -1,27 +1,31 @@
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 import hmac
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.client_ip import resolve_client_ip
 from app.database import get_session
+from app.deps import current_user
 from app.models import OtpChallenge, RefreshToken, User
-from app.schemas import ChangePasswordInput, LoginInput, OtpRequestInput, OtpVerifyInput, PreferencesInput, ProfileUpdateInput, RegisterInput
-from app.security import decode_access_token, hash_password, issue_access_token, new_otp, new_refresh_token, token_digest, verify_password
-from app.rate_limit import SlidingWindowLimiter
+from app.schemas import ChangePasswordInput, LoginInput, OtpRequestInput, OtpVerifyInput, PreferencesInput, ProfileUpdateInput, RegisterInput, TwoFactorInput
+from app.security import decode_access_token, decode_login_challenge, hash_password, is_strong_password, issue_access_token, issue_login_challenge, new_otp, new_refresh_token, token_digest, verify_password
+from app.rate_limit import allow_request
 from app.otp import get_otp_sender
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
-auth_limiter = SlidingWindowLimiter(limit=10, window_seconds=60)
+_dummy_password_hash = hash_password("DummyPassword1!")
 
 
-def check_auth_rate_limit(request: Request) -> None:
+def check_auth_rate_limit(request: Request, session: Session, identifier: str | None = None) -> None:
     settings = get_settings()
     client_ip = resolve_client_ip(request.client.host if request.client else None, request.headers.get("x-forwarded-for"), settings.trusted_proxy_networks)
-    if client_ip is None or not auth_limiter.allowed(client_ip):
+    if client_ip is None or not allow_request(session, f"auth:ip:{client_ip}", 10, 60):
+        raise HTTPException(status_code=429, detail="Too many requests")
+    if identifier is not None and not allow_request(session, f"auth:identifier:{identifier.casefold()}", 5, 900):
         raise HTTPException(status_code=429, detail="Too many requests")
 
 
@@ -41,14 +45,29 @@ def set_session(response: Response, user: User, session: Session, settings: Sett
 
 def issue_otp(email: str, purpose: str, session: Session, settings: Settings) -> None:
     now = datetime.now(timezone.utc)
-    recent = session.scalars(select(OtpChallenge).where(OtpChallenge.email == email, OtpChallenge.purpose == purpose, OtpChallenge.created_at >= now - timedelta(hours=1))).all()
+    lock_key = int.from_bytes(sha256(f"otp:{email}:{purpose}".encode()).digest()[:8], "big", signed=True)
+    session.execute(select(func.pg_advisory_xact_lock(lock_key)))
+    recent = session.scalars(
+        select(OtpChallenge).where(
+            OtpChallenge.email == email,
+            OtpChallenge.purpose == purpose,
+            OtpChallenge.created_at >= now - timedelta(hours=1),
+        ).order_by(OtpChallenge.created_at.desc())
+    ).all()
     if len(recent) >= 5:
+        session.commit()
         return
-    last = session.scalar(select(OtpChallenge).where(OtpChallenge.email == email, OtpChallenge.purpose == purpose, OtpChallenge.consumed_at.is_(None), OtpChallenge.invalidated_at.is_(None)).order_by(OtpChallenge.created_at.desc()))
-    if last is not None and last.created_at >= now - timedelta(seconds=60):
+    if recent and recent[0].created_at >= now - timedelta(seconds=60):
+        session.commit()
         return
-    if last is not None:
-        last.invalidated_at = now
+    session.execute(
+        update(OtpChallenge).where(
+            OtpChallenge.email == email,
+            OtpChallenge.purpose == purpose,
+            OtpChallenge.consumed_at.is_(None),
+            OtpChallenge.invalidated_at.is_(None),
+        ).values(invalidated_at=now)
+    )
     code = new_otp()
     session.add(OtpChallenge(email=email, purpose=purpose, code_hash=token_digest(code), expires_at=now + timedelta(minutes=5)))
     session.commit()
@@ -57,8 +76,8 @@ def issue_otp(email: str, purpose: str, session: Session, settings: Settings) ->
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterInput, response: Response, request: Request, session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
-    check_auth_rate_limit(request)
-    if payload.username in {"admin", "api", "platform", "login", "register", "dashboard", "www"} or not any(c.islower() for c in payload.password) or not any(c.isupper() for c in payload.password) or not any(c.isdigit() for c in payload.password) or not any(not c.isalnum() for c in payload.password):
+    check_auth_rate_limit(request, session)
+    if payload.username in {"admin", "api", "platform", "login", "register", "dashboard", "www"} or not is_strong_password(payload.password):
         raise HTTPException(status_code=422, detail="Invalid registration details")
     user = User(email=str(payload.email).lower(), username=payload.username, phone=payload.phone, name=payload.name.strip(), password_hash=hash_password(payload.password), email_verified=False)
     session.add(user)
@@ -73,10 +92,14 @@ def register(payload: RegisterInput, response: Response, request: Request, sessi
 
 @router.post("/login")
 def login(payload: LoginInput, response: Response, request: Request, session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
-    check_auth_rate_limit(request)
+    check_auth_rate_limit(request, session, payload.identifier)
     user = session.scalar(select(User).where(or_(User.email == payload.identifier.lower(), User.username == payload.identifier.lower())))
-    if user is None or not verify_password(payload.password, user.password_hash) or not user.email_verified:
+    password_matches = verify_password(payload.password, user.password_hash if user else _dummy_password_hash)
+    if user is None or not password_matches or not user.email_verified:
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if user.two_factor_enabled:
+        issue_otp(user.email, "login_2fa", session, settings)
+        return {"status": "two_factor_required", "email": user.email, "login_token": issue_login_challenge(str(user.id), user.token_version, settings)}
     set_session(response, user, session, settings)
     return {"id": str(user.id), "email": user.email, "name": user.name}
 
@@ -88,6 +111,7 @@ def logout(response: Response, ah_refresh: str | None = Cookie(default=None), se
         if stored is not None: stored.revoked_at = datetime.now(timezone.utc); session.commit()
     response.delete_cookie("ah_access", path="/")
     response.delete_cookie("ah_refresh", path="/api/v1/auth")
+    response.status_code = status.HTTP_204_NO_CONTENT
     return response
 
 
@@ -103,7 +127,7 @@ def me(ah_access: str | None = Cookie(default=None), session: Session = Depends(
 @router.post("/refresh")
 def refresh(response: Response, ah_refresh: str | None = Cookie(default=None), session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
     if not ah_refresh: raise HTTPException(status_code=401, detail="Invalid session")
-    stored = session.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_digest(ah_refresh)))
+    stored = session.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_digest(ah_refresh)).with_for_update())
     if stored is None: raise HTTPException(status_code=401, detail="Invalid session")
     user = session.get(User, stored.user_id)
     if user is None or stored.revoked_at is not None or stored.expires_at < datetime.now(timezone.utc) or stored.token_version != user.token_version:
@@ -124,6 +148,7 @@ def logout_all(response: Response, user: User = Depends(current_user), session: 
     session.commit()
     response.delete_cookie("ah_access", path="/")
     response.delete_cookie("ah_refresh", path="/api/v1/auth")
+    response.status_code = status.HTTP_204_NO_CONTENT
     return response
 
 
@@ -146,9 +171,28 @@ def update_preferences(payload: PreferencesInput, user: User = Depends(current_u
     return {"locale": user.locale, "theme": user.theme}
 
 
+@router.patch("/two-factor")
+def update_two_factor(payload: TwoFactorInput, response: Response, user: User = Depends(current_user), session: Session = Depends(get_session)) -> Response:
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid password")
+    user.two_factor_enabled = payload.enabled
+    user.token_version += 1
+    session.query(RefreshToken).filter(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)).update({RefreshToken.revoked_at: datetime.now(timezone.utc)})
+    session.commit()
+    response.delete_cookie("ah_access", path="/")
+    response.delete_cookie("ah_refresh", path="/api/v1/auth")
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
+
+
+@router.get("/two-factor")
+def get_two_factor(user: User = Depends(current_user)) -> dict[str, bool]:
+    return {"enabled": user.two_factor_enabled}
+
+
 @router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
 def change_password(payload: ChangePasswordInput, response: Response, user: User = Depends(current_user), session: Session = Depends(get_session)) -> Response:
-    if not verify_password(payload.current_password, user.password_hash) or not any(c.islower() for c in payload.new_password) or not any(c.isupper() for c in payload.new_password) or not any(c.isdigit() for c in payload.new_password) or not any(not c.isalnum() for c in payload.new_password):
+    if not verify_password(payload.current_password, user.password_hash) or not is_strong_password(payload.new_password):
         raise HTTPException(status_code=400, detail="Invalid password")
     user.password_hash = hash_password(payload.new_password)
     user.token_version += 1
@@ -156,12 +200,13 @@ def change_password(payload: ChangePasswordInput, response: Response, user: User
     session.commit()
     response.delete_cookie("ah_access", path="/")
     response.delete_cookie("ah_refresh", path="/api/v1/auth")
+    response.status_code = status.HTTP_204_NO_CONTENT
     return response
 
 
 @router.post("/otp/request", status_code=status.HTTP_202_ACCEPTED)
 def request_otp(payload: OtpRequestInput, request: Request, session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
-    check_auth_rate_limit(request)
+    check_auth_rate_limit(request, session)
     email = str(payload.email).lower()
     user = session.scalar(select(User).where(User.email == email))
     eligible = user is not None and ((payload.purpose == "verify_email" and not user.email_verified) or payload.purpose == "reset_password")
@@ -174,13 +219,27 @@ def request_otp(payload: OtpRequestInput, request: Request, session: Session = D
 
 @router.post("/otp/verify")
 def verify_otp(payload: OtpVerifyInput, response: Response, session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
-    challenge = session.scalar(select(OtpChallenge).where(OtpChallenge.email == str(payload.email).lower(), OtpChallenge.purpose == payload.purpose, OtpChallenge.consumed_at.is_(None), OtpChallenge.invalidated_at.is_(None)).order_by(OtpChallenge.expires_at.desc()))
+    login_user = None
+    if payload.purpose == "login_2fa":
+        claims = decode_login_challenge(payload.login_token or "", settings)
+        login_user = session.get(User, claims["sub"]) if claims and isinstance(claims.get("sub"), str) else None
+        if login_user is None or login_user.email != str(payload.email).lower() or not login_user.two_factor_enabled or claims.get("ver") != login_user.token_version:
+            raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+    challenge = session.scalar(select(OtpChallenge).where(OtpChallenge.email == str(payload.email).lower(), OtpChallenge.purpose == payload.purpose, OtpChallenge.consumed_at.is_(None), OtpChallenge.invalidated_at.is_(None)).order_by(OtpChallenge.expires_at.desc()).with_for_update())
     now = datetime.now(timezone.utc)
-    if challenge is None or challenge.expires_at < now or challenge.attempts >= 5 or not hmac.compare_digest(challenge.code_hash if challenge else "0" * 64, token_digest(payload.code)):
+    code_matches = hmac.compare_digest(challenge.code_hash if challenge else "0" * 64, token_digest(payload.code))
+    if challenge is None or challenge.expires_at < now or challenge.attempts >= 5 or not code_matches:
         if challenge is not None:
-            challenge.attempts += 1; session.commit()
+            challenge.attempts += 1
+            if challenge.attempts >= 5:
+                challenge.invalidated_at = now
+            session.commit()
         raise HTTPException(status_code=400, detail="Invalid or expired verification code")
     challenge.consumed_at = now
+    if payload.purpose == "login_2fa" and login_user is not None:
+        session.commit()
+        set_session(response, login_user, session, settings)
+        return {"status": "verified"}
     if payload.purpose == "verify_email":
         user = session.scalar(select(User).where(User.email == challenge.email))
         if user is None: raise HTTPException(status_code=400, detail="Invalid verification request")
@@ -189,8 +248,12 @@ def verify_otp(payload: OtpVerifyInput, response: Response, session: Session = D
         set_session(response, user, session, settings)
         return {"status": "verified"}
     if payload.purpose == "reset_password":
-        if not payload.new_password: raise HTTPException(status_code=422, detail="A new password is required")
+        if not payload.new_password or not is_strong_password(payload.new_password):
+            raise HTTPException(status_code=422, detail="A strong new password is required")
         user = session.scalar(select(User).where(User.email == challenge.email))
-        if user is not None: user.password_hash = hash_password(payload.new_password); user.token_version += 1
+        if user is not None:
+            user.password_hash = hash_password(payload.new_password)
+            user.token_version += 1
+            session.query(RefreshToken).filter(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)).update({RefreshToken.revoked_at: now})
     session.commit()
     return {"status": "verified"}

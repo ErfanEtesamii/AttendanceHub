@@ -12,6 +12,16 @@ from app.config import Settings
 _password_hasher = PasswordHasher()
 
 
+def is_strong_password(password: str) -> bool:
+    return (
+        8 <= len(password) <= 128
+        and any(character.islower() for character in password)
+        and any(character.isupper() for character in password)
+        and any(character.isdigit() for character in password)
+        and any(not character.isalnum() for character in password)
+    )
+
+
 def hash_password(password: str) -> str:
     return _password_hasher.hash(password)
 
@@ -26,6 +36,20 @@ def verify_password(password: str, password_hash: str) -> bool:
 def issue_access_token(subject: str, token_version: int, settings: Settings) -> str:
     now = datetime.now(timezone.utc)
     return jwt.encode({"sub": subject, "ver": token_version, "iat": now, "exp": now + timedelta(minutes=15)}, settings.jwt_secret, algorithm="HS256")
+
+
+def issue_login_challenge(subject: str, token_version: int, settings: Settings) -> str:
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {"sub": subject, "ver": token_version, "purpose": "login_2fa", "iat": now, "exp": now + timedelta(minutes=5)},
+        settings.jwt_secret,
+        algorithm="HS256",
+    )
+
+
+def decode_login_challenge(token: str, settings: Settings) -> dict[str, object] | None:
+    claims = decode_access_token(token, settings)
+    return claims if claims and claims.get("purpose") == "login_2fa" else None
 
 
 def decode_access_token(token: str, settings: Settings) -> dict[str, object] | None:

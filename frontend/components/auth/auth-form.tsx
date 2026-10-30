@@ -15,6 +15,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
     try {
       const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) });
       if (!response.ok) throw new Error();
+      const result = mode === "login" ? await response.json() : null;
+      if (result?.status === "two_factor_required") {
+        sessionStorage.setItem("attendhub_login_token", result.login_token);
+        router.replace(`/verify?two_factor=1&email=${encodeURIComponent(result.email)}`);
+        return;
+      }
       if (mode === "forgot") router.replace(`/verify?reset=1&email=${encodeURIComponent(String(data.get("email")))}`);
       else if (mode === "register") router.replace(`/verify?email=${encodeURIComponent(String(data.get("email")))}`);
       else {
