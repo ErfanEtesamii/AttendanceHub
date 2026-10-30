@@ -17,6 +17,12 @@ All notable changes to this project are documented in this file.
 - Default security headers and no-store caching for backend API responses.
 - OTP cooldown/hourly limits, verified-email sessions, refresh reuse revocation, logout-all, profile preferences, and username login.
 - Trusted-proxy client-IP resolution, CSRF origin fallback checks, request body limits, frontend CSP, normalized policy targets, invitation revocation, and member status controls.
+- PostgreSQL-backed authentication rate limits, second-factor OTP login, a short-lived httpOnly login challenge, and PostgreSQL migration round-trip checks.
+- Legacy attendance policy backfill, CIDR width checks, real-IP policy test, and location fix freshness checks.
+
+### Known gaps
+- Full five-step company wizard, multi-location map, live Telegram integration, comprehensive tenant and browser E2E tests, and production deployment validation are still pending.
+- Database row-level security is not enabled. A trusted ingress must sanitize forwarded IP headers before `TRUSTED_PROXIES` is enabled.
 
 ## [0.1.0] - 2026-10-24
 

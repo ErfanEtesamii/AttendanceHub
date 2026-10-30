@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel, EmailStr, Field
 
@@ -54,7 +55,6 @@ class OtpRequestInput(BaseModel):
 class OtpVerifyInput(OtpRequestInput):
     code: str = Field(pattern=r"^\d{6}$")
     new_password: str | None = Field(default=None, min_length=8, max_length=128)
-    login_token: str | None = Field(default=None, max_length=2048)
 
 
 class CompanyCreateInput(BaseModel):
@@ -62,21 +62,23 @@ class CompanyCreateInput(BaseModel):
     slug: str = Field(pattern="^[a-z0-9-]{3,80}$")
     mode: str = Field(pattern="^(ip|location)$")
     allowed_cidr: str | None = Field(default=None, max_length=64)
+    confirm_wide_range: bool = False
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     radius_meters: int | None = Field(default=None, ge=20, le=5000)
 
 
 class AttendancePolicyTestInput(BaseModel):
-    ip: str | None = None
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     accuracy_meters: float | None = Field(default=None, ge=0)
+    timestamp: datetime | None = None
 
 
 class AttendancePolicyUpdateInput(BaseModel):
     mode: str = Field(pattern="^(ip|location)$")
     allowed_cidr: str | None = Field(default=None, max_length=64)
+    confirm_wide_range: bool = False
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     radius_meters: int | None = Field(default=None, ge=20, le=5000)

@@ -20,3 +20,5 @@ def test_location_rejects_stale_future_and_invalid_fixes() -> None:
     assert not location_is_allowed(35.6892, 51.3890, 10, 35.6892, 51.3890, 50, timestamp=now - timedelta(seconds=61))
     assert not location_is_allowed(35.6892, 51.3890, 10, 35.6892, 51.3890, 50, timestamp=now + timedelta(seconds=61))
     assert not location_is_allowed(float("nan"), 51.3890, 10, 35.6892, 51.3890, 50)
+    assert not location_is_allowed(0, 0, 10, 0, 0, 20, timestamp=now + timedelta(seconds=1))
+    assert location_is_allowed(0, 0, 10, 0, 0, 20, timestamp=now)

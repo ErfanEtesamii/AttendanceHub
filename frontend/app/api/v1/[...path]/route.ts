@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { isIP } from "node:net";
 
 const backendUrl = process.env.BACKEND_INTERNAL_URL ?? "http://localhost:8000";
 const allowedRequestHeaders = ["accept", "accept-language", "content-type", "cookie", "origin", "user-agent"];
@@ -9,6 +10,12 @@ async function proxy(request: NextRequest, { params }: { params: Promise<{ path:
   if (!path.length || path.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("/") || segment.includes("\\"))) return new Response("Invalid path", { status: 400 });
   const headers = new Headers();
   for (const name of allowedRequestHeaders) { const value = request.headers.get(name); if (value) headers.set(name, value); }
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    const chain = forwardedFor.split(",").map((item) => item.trim());
+    if (chain.some((item) => !isIP(item))) return new Response("Invalid forwarded address", { status: 400 });
+    headers.set("x-forwarded-for", chain.join(", "));
+  }
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 15000);
   try {
     const upstream = new URL(`/api/v1/${path.map(encodeURIComponent).join("/")}`, backendUrl);

@@ -14,8 +14,10 @@ def test_register_verify_session_and_logout_all(monkeypatch: pytest.MonkeyPatch)
     from sqlalchemy import delete, select
 
     from app.database import SessionLocal
+    from app.config import get_settings
     from app.main import app
     from app.models import Company, OtpChallenge, User
+    from app.security import hash_password, issue_access_token
     import app.routers.auth as auth_router
 
     captured: list[str] = []
@@ -25,11 +27,12 @@ def test_register_verify_session_and_logout_all(monkeypatch: pytest.MonkeyPatch)
             captured.append(code)
 
     monkeypatch.setattr(auth_router, "get_otp_sender", lambda settings: Sender())
-    monkeypatch.setattr(auth_router, "resolve_client_ip", lambda *args: "127.0.0.1")
     suffix = uuid4().hex[:16]
+    monkeypatch.setattr(auth_router, "resolve_client_ip", lambda *args: f"2001:db8:{suffix[:4]}::{suffix[4:8]}")
     email = f"test-{suffix}@example.com"
     username = f"test_{suffix}"
     slug = f"test-{suffix}"
+    other_email = f"other-{suffix}@example.com"
 
     try:
         with TestClient(app, base_url="http://127.0.0.1") as client:
@@ -62,6 +65,33 @@ def test_register_verify_session_and_logout_all(monkeypatch: pytest.MonkeyPatch)
                 json={"name": "Duplicate", "slug": slug, "mode": "ip", "allowed_cidr": "192.0.2.0/24"},
             )
             assert duplicate.status_code == 409, duplicate.text
+            unrestricted = client.post(
+                "/api/v1/companies",
+                headers={"origin": "http://localhost:3000"},
+                json={"name": "Unrestricted", "slug": f"open-{suffix}", "mode": "ip", "allowed_cidr": "0.0.0.0/0", "confirm_wide_range": True},
+            )
+            assert unrestricted.status_code == 422
+            wide = client.post(
+                "/api/v1/companies",
+                headers={"origin": "http://localhost:3000"},
+                json={"name": "Too Wide", "slug": f"wide-{suffix}", "mode": "ip", "allowed_cidr": "10.0.0.0/8"},
+            )
+            assert wide.status_code == 422
+
+            with SessionLocal() as session:
+                other = User(email=other_email, username=f"other_{suffix}", name="Other User", password_hash=hash_password("ValidPass1!"), email_verified=True)
+                session.add(other)
+                session.commit()
+                other_id = str(other.id)
+            with TestClient(app, base_url="http://127.0.0.1") as other_client:
+                other_client.cookies.set("ah_access", issue_access_token(other_id, 0, get_settings()))
+                assert other_client.get(f"/api/v1/companies/{slug}").status_code == 404
+                assert other_client.get(f"/api/v1/companies/{slug}/members").status_code == 404
+                assert other_client.patch(
+                    f"/api/v1/companies/{slug}",
+                    headers={"origin": "http://localhost:3000"},
+                    json={"name": "Unauthorized change"},
+                ).status_code == 404
 
             enabled = client.patch(
                 "/api/v1/auth/two-factor",
@@ -73,10 +103,12 @@ def test_register_verify_session_and_logout_all(monkeypatch: pytest.MonkeyPatch)
             login = client.post("/api/v1/auth/login", json={"identifier": username, "password": "ValidPass1!"})
             assert login.status_code == 200, login.text
             assert login.json()["status"] == "two_factor_required"
+            assert "login_token" not in login.json()
             assert client.get("/api/v1/auth/me").status_code == 401
             two_factor_verified = client.post(
                 "/api/v1/auth/otp/verify",
-                json={"email": email, "purpose": "login_2fa", "code": captured[-1], "login_token": login.json()["login_token"]},
+                headers={"origin": "http://localhost:3000"},
+                json={"email": email, "purpose": "login_2fa", "code": captured[-1]},
             )
             assert two_factor_verified.status_code == 200, two_factor_verified.text
             assert client.get("/api/v1/auth/me").status_code == 200
@@ -93,4 +125,7 @@ def test_register_verify_session_and_logout_all(monkeypatch: pytest.MonkeyPatch)
             session.execute(delete(OtpChallenge).where(OtpChallenge.email == email))
             if user is not None:
                 session.delete(user)
+            other = session.scalar(select(User).where(User.email == other_email))
+            if other is not None:
+                session.delete(other)
             session.commit()

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from ipaddress import ip_network
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.deps import current_user, get_company_context
 from app.database import get_session
-from app.attendance import ip_matches_cidr, location_is_allowed
+from app.attendance import haversine_meters, ip_matches_cidr, location_is_allowed
+from app.client_ip import resolve_client_ip
 from app.bots import encrypt_bot_token, has_decryptable_token, validate_dedicated_token
 from app.models import AttendancePolicy, AuditLog, BotConfiguration, Company, Invitation, Membership, PolicyGeofence, PolicyIpRange, User
 from app.schemas import AttendancePolicyTestInput, AttendancePolicyUpdateInput, BotConfigurationInput, CompanyCreateInput, CompanyUpdateInput, InvitationAcceptInput, InvitationCreateInput, MembershipRoleUpdateInput
@@ -38,7 +39,7 @@ def company_overview(slug: str, user: User = Depends(current_user), session: Ses
 def create_company(payload: CompanyCreateInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str]:
     if payload.slug in {"admin", "api", "auth", "dashboard", "login", "platform", "register", "www"}:
         raise HTTPException(status_code=422, detail="Reserved company slug")
-    validate_attendance_policy(payload.mode, payload.allowed_cidr, payload.latitude, payload.longitude, payload.radius_meters)
+    normalized_cidr = validate_attendance_policy(payload.mode, payload.allowed_cidr, payload.latitude, payload.longitude, payload.radius_meters, payload.confirm_wide_range)
     count = session.scalar(
         select(func.count()).select_from(Membership).where(
             Membership.user_id == user.id,
@@ -57,15 +58,15 @@ def create_company(payload: CompanyCreateInput, user: User = Depends(current_use
             AttendancePolicy(
                 company_id=company.id,
                 mode=payload.mode,
-                allowed_cidr=payload.allowed_cidr,
+                allowed_cidr=normalized_cidr,
                 latitude=str(payload.latitude) if payload.latitude is not None else None,
                 longitude=str(payload.longitude) if payload.longitude is not None else None,
                 radius_meters=payload.radius_meters,
                 updated_by=user.id,
             )
         )
-        if payload.mode == "ip" and payload.allowed_cidr:
-            session.add(PolicyIpRange(company_id=company.id, policy_id=company.id, cidr=payload.allowed_cidr, label="Primary network"))
+        if payload.mode == "ip" and normalized_cidr:
+            session.add(PolicyIpRange(company_id=company.id, policy_id=company.id, cidr=normalized_cidr, label="Primary network"))
         if payload.mode == "location" and payload.latitude is not None and payload.longitude is not None and payload.radius_meters is not None:
             session.add(PolicyGeofence(company_id=company.id, policy_id=company.id, name="Primary location", latitude=payload.latitude, longitude=payload.longitude, radius_meters=payload.radius_meters))
         session.commit()
@@ -94,15 +95,20 @@ def update_company(slug: str, payload: CompanyUpdateInput, user: User = Depends(
     return {"name": company.name, "name_en": company.name_en}
 
 
-def validate_attendance_policy(mode: str, allowed_cidr: str | None, latitude: float | str | None, longitude: float | str | None, radius_meters: int | None) -> None:
+def validate_attendance_policy(mode: str, allowed_cidr: str | None, latitude: float | str | None, longitude: float | str | None, radius_meters: int | None, confirm_wide_range: bool = False) -> str | None:
     if mode == "ip":
         try:
-            ip_network(allowed_cidr or "", strict=False)
+            network = ip_network(allowed_cidr or "", strict=True)
         except ValueError:
             raise HTTPException(status_code=422, detail="A valid CIDR is required for IP mode")
-        return
+        if network.prefixlen == 0:
+            raise HTTPException(status_code=422, detail="Unrestricted network is not allowed")
+        if not confirm_wide_range and network.prefixlen < (16 if network.version == 4 else 48):
+            raise HTTPException(status_code=422, detail="Wide network requires confirmation")
+        return str(network)
     if latitude is None or longitude is None or radius_meters is None:
         raise HTTPException(status_code=422, detail="Location coordinates and radius are required")
+    return None
 
 
 @router.get("/{slug}/attendance-policy")
@@ -116,34 +122,42 @@ def get_attendance_policy(slug: str, user: User = Depends(current_user), session
 @router.put("/{slug}/attendance-policy")
 def update_attendance_policy(slug: str, payload: AttendancePolicyUpdateInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, str]:
     company = require_company_permission(slug, user, session, "policy.edit")
-    validate_attendance_policy(payload.mode, payload.allowed_cidr, payload.latitude, payload.longitude, payload.radius_meters)
+    normalized_cidr = validate_attendance_policy(payload.mode, payload.allowed_cidr, payload.latitude, payload.longitude, payload.radius_meters, payload.confirm_wide_range)
     policy = session.get(AttendancePolicy, company.id)
     if policy is None: raise HTTPException(status_code=404, detail="Policy not found")
     policy.mode = payload.mode
-    policy.allowed_cidr = payload.allowed_cidr if payload.mode == "ip" else None
+    policy.allowed_cidr = normalized_cidr
     policy.latitude = str(payload.latitude) if payload.mode == "location" else None
     policy.longitude = str(payload.longitude) if payload.mode == "location" else None
     policy.radius_meters = payload.radius_meters if payload.mode == "location" else None
     session.query(PolicyIpRange).filter(PolicyIpRange.company_id == company.id).delete()
     session.query(PolicyGeofence).filter(PolicyGeofence.company_id == company.id).delete()
-    if payload.mode == "ip" and payload.allowed_cidr:
-        session.add(PolicyIpRange(company_id=company.id, policy_id=company.id, cidr=payload.allowed_cidr, label="Primary network"))
+    if payload.mode == "ip" and normalized_cidr:
+        session.add(PolicyIpRange(company_id=company.id, policy_id=company.id, cidr=normalized_cidr, label="Primary network"))
     if payload.mode == "location" and payload.latitude is not None and payload.longitude is not None and payload.radius_meters:
         session.add(PolicyGeofence(company_id=company.id, policy_id=company.id, name="Primary location", latitude=payload.latitude, longitude=payload.longitude, radius_meters=payload.radius_meters))
+    policy.updated_by = user.id
     session.add(AuditLog(company_id=company.id, actor_id=user.id, action="attendance_policy.updated")); session.commit()
     return {"status": "saved", "mode": policy.mode}
 
 
 @router.post("/{slug}/attendance-policy/test")
-def test_attendance_policy(slug: str, payload: AttendancePolicyTestInput, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict[str, bool | str]:
+def test_attendance_policy(slug: str, payload: AttendancePolicyTestInput, request: Request, user: User = Depends(current_user), session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, bool | str | float | None]:
     company = require_company_permission(slug, user, session, "policy.edit")
     policy = session.get(AttendancePolicy, company.id)
     if policy is None: raise HTTPException(status_code=404, detail="Policy not found")
     if policy.mode == "ip":
-        allowed = bool(payload.ip and policy.allowed_cidr and ip_matches_cidr(payload.ip, policy.allowed_cidr))
+        client_ip = resolve_client_ip(request.client.host if request.client else None, request.headers.get("x-forwarded-for"), settings.trusted_proxy_networks)
+        ranges = session.scalars(select(PolicyIpRange).where(PolicyIpRange.company_id == company.id)).all()
+        allowed = bool(client_ip and any(ip_matches_cidr(client_ip, item.cidr) for item in ranges))
+        return {"mode": policy.mode, "allowed": allowed, "reason": "within_allowed_network" if allowed else "outside_allowed_network"}
     else:
-        allowed = bool(payload.latitude is not None and payload.longitude is not None and payload.accuracy_meters is not None and policy.latitude and policy.longitude and policy.radius_meters and location_is_allowed(payload.latitude, payload.longitude, payload.accuracy_meters, float(policy.latitude), float(policy.longitude), policy.radius_meters))
-    return {"mode": policy.mode, "allowed": allowed}
+        if payload.latitude is None or payload.longitude is None or payload.accuracy_meters is None or payload.timestamp is None:
+            return {"mode": policy.mode, "allowed": False, "reason": "missing_location_fix", "distance_meters": None}
+        geofences = session.scalars(select(PolicyGeofence).where(PolicyGeofence.company_id == company.id)).all()
+        distances = [haversine_meters(payload.latitude, payload.longitude, fence.latitude, fence.longitude) for fence in geofences]
+        allowed = any(location_is_allowed(payload.latitude, payload.longitude, payload.accuracy_meters, fence.latitude, fence.longitude, fence.radius_meters, policy.max_accuracy_meters, payload.timestamp, policy.max_fix_age_seconds) for fence in geofences)
+        return {"mode": policy.mode, "allowed": allowed, "reason": "within_geofence" if allowed else "location_rejected", "distance_meters": min(distances) if distances else None}
 
 
 @router.get("/{slug}/audit")

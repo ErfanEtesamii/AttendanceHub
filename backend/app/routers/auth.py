@@ -99,7 +99,8 @@ def login(payload: LoginInput, response: Response, request: Request, session: Se
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if user.two_factor_enabled:
         issue_otp(user.email, "login_2fa", session, settings)
-        return {"status": "two_factor_required", "email": user.email, "login_token": issue_login_challenge(str(user.id), user.token_version, settings)}
+        response.set_cookie("ah_login_challenge", issue_login_challenge(str(user.id), user.token_version, settings), httponly=True, secure=settings.environment == "production", samesite="lax", max_age=300, path="/api/v1/auth/otp")
+        return {"status": "two_factor_required", "email": user.email}
     set_session(response, user, session, settings)
     return {"id": str(user.id), "email": user.email, "name": user.name}
 
@@ -218,10 +219,10 @@ def request_otp(payload: OtpRequestInput, request: Request, session: Session = D
 
 
 @router.post("/otp/verify")
-def verify_otp(payload: OtpVerifyInput, response: Response, session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
+def verify_otp(payload: OtpVerifyInput, response: Response, ah_login_challenge: str | None = Cookie(default=None), session: Session = Depends(get_session), settings: Settings = Depends(get_settings)) -> dict[str, str]:
     login_user = None
     if payload.purpose == "login_2fa":
-        claims = decode_login_challenge(payload.login_token or "", settings)
+        claims = decode_login_challenge(ah_login_challenge or "", settings)
         login_user = session.get(User, claims["sub"]) if claims and isinstance(claims.get("sub"), str) else None
         if login_user is None or login_user.email != str(payload.email).lower() or not login_user.two_factor_enabled or claims.get("ver") != login_user.token_version:
             raise HTTPException(status_code=400, detail="Invalid or expired verification code")
@@ -238,6 +239,7 @@ def verify_otp(payload: OtpVerifyInput, response: Response, session: Session = D
     challenge.consumed_at = now
     if payload.purpose == "login_2fa" and login_user is not None:
         session.commit()
+        response.delete_cookie("ah_login_challenge", path="/api/v1/auth/otp")
         set_session(response, login_user, session, settings)
         return {"status": "verified"}
     if payload.purpose == "verify_email":

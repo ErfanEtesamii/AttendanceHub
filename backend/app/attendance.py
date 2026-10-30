@@ -25,6 +25,7 @@ def location_is_allowed(lat: float, lon: float, accuracy_meters: float, policy_l
         return False
     if timestamp is not None:
         timestamp = timestamp if timestamp.tzinfo else timestamp.replace(tzinfo=timezone.utc)
-        if abs((datetime.now(timezone.utc) - timestamp).total_seconds()) > max_fix_age_seconds:
+        age_seconds = (datetime.now(timezone.utc) - timestamp).total_seconds()
+        if age_seconds < 0 or age_seconds > max_fix_age_seconds:
             return False
     return accuracy_meters <= max_accuracy_meters and haversine_meters(lat, lon, policy_lat, policy_lon) <= radius_meters
